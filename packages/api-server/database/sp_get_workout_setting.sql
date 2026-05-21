@@ -1,0 +1,6 @@
+-- 이 파일은 비어 있습니다. WorkoutSettings 관련 프로시저는 아래 한 파일로 통합되었습니다.
+--
+--   database/workout-settings-procedures.sql
+--
+-- 배포:
+--   mysql -u USER -p DBNAME < database/workout-settings-procedures.sql

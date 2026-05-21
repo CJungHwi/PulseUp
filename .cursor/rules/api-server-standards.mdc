@@ -1,0 +1,1486 @@
+# API Server Development Standards
+
+## Context & Purpose
+
+You are developing a **RESTful API server** with Node.js and Express, following modern backend architecture patterns. This document defines the structural patterns, security practices, and implementation standards that ensure maintainability, scalability, and security across the codebase.
+
+**Target Audience**: AI assistants, backend developers onboarding to Node.js/TypeScript API projects.
+
+---
+
+## Technology Stack
+
+### Core Framework
+- **Node.js** with Express.js
+- **TypeScript** with ES2020+ target
+- **ESM** (ES Modules) - `type: "module"` in package.json
+
+### Database
+- **MySQL** with mysql2 driver
+- Connection pooling for performance
+- Stored procedures for complex operations
+- Prepared statements for SQL injection prevention
+
+### Validation & Types
+- **Zod** for runtime validation and type inference
+- TypeScript for compile-time type safety
+- Request/response schema validation
+
+### Authentication & Security
+- **JWT** (jsonwebtoken) for authentication
+- **bcrypt** for password hashing
+- **Helmet** for security headers
+- **CORS** for cross-origin requests
+- Rate limiting for API protection
+
+### Testing
+- **Vitest** for unit and integration tests
+- **Supertest** for HTTP endpoint testing
+
+---
+
+## Project Structure
+
+```
+src/
+├── index.ts                     # Application entry point
+│
+├── routes/                      # HTTP endpoint definitions
+│   ├── auth.routes.ts           # Authentication endpoints
+│   ├── users.routes.ts          # User management
+│   ├── [resource].routes.ts    # Resource-specific routes
+│   └── index.ts                 # Route aggregation (optional)
+│
+├── middleware/                  # Cross-cutting concerns
+│   ├── auth.middleware.ts       # JWT authentication
+│   ├── validation.middleware.ts # Zod validation
+│   ├── error.middleware.ts      # Centralized error handling
+│   ├── logging.middleware.ts    # Request/response logging
+│   ├── rateLimit.middleware.ts  # Rate limiting
+│   └── rbac.middleware.ts       # Role-based access control
+│
+├── services/                    # Business logic layer
+│   ├── auth.service.ts          # Authentication logic
+│   ├── user.service.ts          # User operations
+│   ├── [domain].service.ts     # Domain-specific logic
+│   └── [feature]/               # Feature modules (optional)
+│       └── [feature].service.ts
+│
+├── schemas/                     # Zod validation schemas
+│   ├── auth.schema.ts
+│   ├── user.schema.ts
+│   └── [resource].schema.ts
+│
+├── lib/                         # Infrastructure utilities
+│   ├── database.ts              # Database connection & helpers
+│   ├── redis.ts                 # Cache client (optional)
+│   └── logger.ts                # Logging utility
+│
+├── types/                       # TypeScript type definitions
+│   ├── express.d.ts             # Express type extensions
+│   └── [domain].types.ts       # Domain types
+│
+├── utils/                       # Pure utility functions
+│   ├── hash.util.ts
+│   ├── jwt.util.ts
+│   └── [helper].util.ts
+│
+└── tests/                       # Test files
+    ├── integration/             # API endpoint tests
+    └── unit/                    # Service/utility tests
+```
+
+---
+
+## Architectural Patterns
+
+### 1. Layered Architecture
+
+**PRINCIPLE**: Separation of concerns through distinct layers.
+
+```
+┌─────────────────────────────────────┐
+│   HTTP Request (Client)             │
+└─────────────────┬───────────────────┘
+                  │
+┌─────────────────▼───────────────────┐
+│   Middleware Chain                  │
+│   • Authentication                  │
+│   • Validation                      │
+│   • Logging                         │
+└─────────────────┬───────────────────┘
+                  │
+┌─────────────────▼───────────────────┐
+│   Route Handler (Controller)        │
+│   • Request parsing                 │
+│   • Response formatting             │
+│   • Thin layer (no business logic)  │
+└─────────────────┬───────────────────┘
+                  │
+┌─────────────────▼───────────────────┐
+│   Service Layer                     │
+│   • Business logic                  │
+│   • Data validation                 │
+│   • Orchestration                   │
+└─────────────────┬───────────────────┘
+                  │
+┌─────────────────▼───────────────────┐
+│   Database / External Services      │
+│   • Data persistence                │
+│   • Third-party APIs                │
+└─────────────────────────────────────┘
+```
+
+### 2. Route Handler Pattern
+
+**PRINCIPLE**: Keep route handlers thin - delegate to services.
+
+```typescript
+// routes/users.routes.ts
+import { Router } from 'express'
+import { authenticateToken } from '../middleware/auth.middleware.js'
+import { validateBody } from '../middleware/validation.middleware.js'
+import { createUserSchema } from '../schemas/user.schema.js'
+import { UserService } from '../services/user.service.js'
+
+const router = Router()
+
+// ✅ GOOD: Thin route handler
+router.post(
+  '/users',
+  authenticateToken,                    // 1. Authentication
+  validateBody(createUserSchema),       // 2. Validation
+  async (req, res, next) => {           // 3. Handler
+    try {
+      const user = await UserService.createUser(req.body)
+      res.status(201).json({
+        success: true,
+        data: user
+      })
+    } catch (error) {
+      next(error)  // Pass to error middleware
+    }
+  }
+)
+
+export default router
+```
+
+```typescript
+// ❌ BAD: Business logic in route handler
+router.post('/users', async (req, res) => {
+  const { email, password, name } = req.body
+  
+  // ❌ Validation in route
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Missing fields' })
+  }
+  
+  // ❌ Business logic in route
+  const hashedPassword = await bcrypt.hash(password, 10)
+  
+  // ❌ Database access in route
+  const result = await db.query(
+    'INSERT INTO users (email, password, name) VALUES (?, ?, ?)',
+    [email, hashedPassword, name]
+  )
+  
+  res.json({ id: result.insertId })
+})
+```
+
+### 3. Service Layer Pattern
+
+**PRINCIPLE**: Encapsulate business logic in services.
+
+```typescript
+// services/user.service.ts
+import { executeQuery, callProcedure } from '../lib/database.js'
+import { hashPassword } from '../utils/hash.util.js'
+
+export class UserService {
+  /**
+   * Create a new user
+   */
+  static async createUser(data: {
+    email: string
+    password: string
+    name: string
+    role?: string
+  }) {
+    // Business logic: Hash password
+    const hashedPassword = await hashPassword(data.password)
+    
+    // Business logic: Set default role
+    const role = data.role || 'user'
+    
+    // Database operation
+    const [result] = await executeQuery(
+      `INSERT INTO users (email, password, name, role, created_at) 
+       VALUES (?, ?, ?, ?, NOW())`,
+      [data.email, hashedPassword, data.name, role]
+    )
+    
+    // Return clean data (no password)
+    return {
+      id: result.insertId,
+      email: data.email,
+      name: data.name,
+      role
+    }
+  }
+  
+  /**
+   * Find user by email
+   */
+  static async findByEmail(email: string) {
+    const [users] = await executeQuery(
+      'SELECT * FROM users WHERE email = ? AND deleted_at IS NULL',
+      [email]
+    )
+    return users[0] || null
+  }
+  
+  /**
+   * Update user profile
+   */
+  static async updateProfile(userId: string, data: {
+    name?: string
+    phone?: string
+  }) {
+    const updates: string[] = []
+    const params: any[] = []
+    
+    if (data.name !== undefined) {
+      updates.push('name = ?')
+      params.push(data.name)
+    }
+    
+    if (data.phone !== undefined) {
+      updates.push('phone = ?')
+      params.push(data.phone)
+    }
+    
+    if (updates.length === 0) {
+      throw new Error('No fields to update')
+    }
+    
+    params.push(userId)
+    
+    await executeQuery(
+      `UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
+      params
+    )
+    
+    return this.findById(userId)
+  }
+  
+  /**
+   * Soft delete user
+   */
+  static async deleteUser(userId: string) {
+    await executeQuery(
+      'UPDATE users SET deleted_at = NOW() WHERE id = ?',
+      [userId]
+    )
+  }
+  
+  // Private helper
+  private static async findById(id: string) {
+    const [users] = await executeQuery(
+      'SELECT id, email, name, role FROM users WHERE id = ? AND deleted_at IS NULL',
+      [id]
+    )
+    return users[0] || null
+  }
+}
+```
+
+**KEY POINTS**:
+- Static methods for stateless operations
+- Single responsibility per method
+- Return sanitized data (no passwords)
+- Use private helpers for DRY
+- Throw errors for exceptional cases
+- Let middleware handle error responses
+
+### 4. Middleware Chain Pattern
+
+**PRINCIPLE**: Compose functionality through middleware.
+
+```typescript
+// middleware/auth.middleware.ts
+import { Request, Response, NextFunction } from 'express'
+import { verifyToken } from '../utils/jwt.util.js'
+import { AuthService } from '../services/auth.service.js'
+
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string
+    email: string
+    role: string
+  }
+}
+
+/**
+ * Verify JWT token and attach user to request
+ */
+export const authenticateToken = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authHeader = req.headers['authorization']
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        error: 'Access token required',
+        code: 'TOKEN_REQUIRED'
+      })
+    }
+    
+    const token = authHeader.substring(7) // Remove 'Bearer '
+    
+    // Verify JWT
+    const decoded = verifyToken(token)
+    
+    // Get user from database (verify still exists and active)
+    const user = await AuthService.getUserById(decoded.userId)
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid token',
+        code: 'INVALID_TOKEN'
+      })
+    }
+    
+    // Attach user to request
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role
+    }
+    
+    next()
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Token expired',
+        code: 'TOKEN_EXPIRED'
+      })
+    }
+    
+    next(error)
+  }
+}
+
+/**
+ * Check if user has required role
+ */
+export const requireRole = (...allowedRoles: string[]) => {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        code: 'AUTH_REQUIRED'
+      })
+    }
+    
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN'
+      })
+    }
+    
+    next()
+  }
+}
+```
+
+**USAGE**:
+
+```typescript
+// Apply middleware in order
+router.post(
+  '/admin/users',
+  authenticateToken,              // 1. Verify JWT
+  requireRole('admin', 'super'),  // 2. Check role
+  validateBody(schema),           // 3. Validate input
+  handler                         // 4. Execute logic
+)
+```
+
+### 5. Validation Pattern with Zod
+
+**PRINCIPLE**: Validate all inputs at API boundary.
+
+```typescript
+// schemas/user.schema.ts
+import { z } from 'zod'
+
+export const createUserSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain uppercase letter')
+    .regex(/[a-z]/, 'Password must contain lowercase letter')
+    .regex(/[0-9]/, 'Password must contain number'),
+  name: z.string().min(1, 'Name is required').max(100),
+  role: z.enum(['user', 'admin']).optional(),
+  phone: z.string().regex(/^\+?[1-9]\d{9,14}$/).optional()
+})
+
+export const updateUserSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  phone: z.string().regex(/^\+?[1-9]\d{9,14}$/).optional()
+}).refine(data => Object.keys(data).length > 0, {
+  message: 'At least one field must be provided'
+})
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1)
+})
+
+// Type inference
+export type CreateUserInput = z.infer<typeof createUserSchema>
+export type UpdateUserInput = z.infer<typeof updateUserSchema>
+export type LoginInput = z.infer<typeof loginSchema>
+```
+
+```typescript
+// middleware/validation.middleware.ts
+import { Request, Response, NextFunction } from 'express'
+import { z } from 'zod'
+
+/**
+ * Validate request body against Zod schema
+ */
+export const validateBody = (schema: z.ZodSchema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      req.body = schema.parse(req.body)
+      next()
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          code: 'VALIDATION_ERROR',
+          details: error.errors.map(err => ({
+            field: err.path.join('.'),
+            message: err.message
+          }))
+        })
+      }
+      next(error)
+    }
+  }
+}
+
+/**
+ * Validate request params
+ */
+export const validateParams = (schema: z.ZodSchema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      req.params = schema.parse(req.params)
+      next()
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid parameters',
+          code: 'INVALID_PARAMS',
+          details: error.errors
+        })
+      }
+      next(error)
+    }
+  }
+}
+
+/**
+ * Validate request query
+ */
+export const validateQuery = (schema: z.ZodSchema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      req.query = schema.parse(req.query)
+      next()
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid query parameters',
+          code: 'INVALID_QUERY',
+          details: error.errors
+        })
+      }
+      next(error)
+    }
+  }
+}
+```
+
+---
+
+## Database Patterns
+
+### 1. Connection Pool Pattern
+
+```typescript
+// lib/database.ts
+import mysql from 'mysql2/promise'
+
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '3306'),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  maxIdle: 10,
+  idleTimeout: 60000,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
+})
+
+/**
+ * Execute a query with parameters (prevents SQL injection)
+ */
+export async function executeQuery(
+  sql: string,
+  params: any[] = []
+): Promise<any> {
+  const connection = await pool.getConnection()
+  try {
+    const [rows] = await connection.execute(sql, params)
+    return rows
+  } finally {
+    connection.release()
+  }
+}
+
+/**
+ * Call a stored procedure
+ */
+export async function callProcedure(
+  procedureName: string,
+  params: any[] = []
+): Promise<any> {
+  const placeholders = params.map(() => '?').join(', ')
+  const sql = `CALL ${procedureName}(${placeholders})`
+  return executeQuery(sql, params)
+}
+
+/**
+ * Execute transaction
+ */
+export async function transaction<T>(
+  callback: (connection: mysql.PoolConnection) => Promise<T>
+): Promise<T> {
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const result = await callback(connection)
+    await connection.commit()
+    return result
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+/**
+ * Test database connection
+ */
+export async function testConnection(): Promise<boolean> {
+  try {
+    const connection = await pool.getConnection()
+    await connection.ping()
+    connection.release()
+    return true
+  } catch (error) {
+    console.error('Database connection failed:', error)
+    return false
+  }
+}
+
+export default pool
+```
+
+### 2. Transaction Pattern
+
+```typescript
+// services/order.service.ts
+import { transaction } from '../lib/database.js'
+
+export class OrderService {
+  /**
+   * Create order with items (atomic operation)
+   */
+  static async createOrder(userId: string, items: Array<{
+    productId: string
+    quantity: number
+    price: number
+  }>) {
+    return await transaction(async (conn) => {
+      // 1. Create order
+      const [orderResult] = await conn.execute(
+        'INSERT INTO orders (user_id, total, status) VALUES (?, ?, ?)',
+        [userId, 0, 'pending']
+      )
+      const orderId = orderResult.insertId
+      
+      // 2. Insert order items
+      let total = 0
+      for (const item of items) {
+        await conn.execute(
+          'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
+          [orderId, item.productId, item.quantity, item.price]
+        )
+        total += item.quantity * item.price
+        
+        // 3. Update inventory
+        await conn.execute(
+          'UPDATE products SET stock = stock - ? WHERE id = ?',
+          [item.quantity, item.productId]
+        )
+      }
+      
+      // 4. Update order total
+      await conn.execute(
+        'UPDATE orders SET total = ? WHERE id = ?',
+        [total, orderId]
+      )
+      
+      return { orderId, total }
+    })
+  }
+}
+```
+
+### 3. Query vs Stored Procedure
+
+**WHEN TO USE QUERIES**:
+- Simple CRUD operations
+- Dynamic filtering/sorting
+- Operations requiring flexibility
+
+**WHEN TO USE STORED PROCEDURES**:
+- Complex business logic
+- Multi-step operations
+- Performance-critical operations
+- Encapsulated domain logic
+
+```typescript
+// ✅ GOOD: Simple query for flexibility
+async getUsers(filters: { role?: string, active?: boolean }) {
+  let sql = 'SELECT * FROM users WHERE 1=1'
+  const params: any[] = []
+  
+  if (filters.role) {
+    sql += ' AND role = ?'
+    params.push(filters.role)
+  }
+  
+  if (filters.active !== undefined) {
+    sql += ' AND active = ?'
+    params.push(filters.active)
+  }
+  
+  return executeQuery(sql, params)
+}
+
+// ✅ GOOD: Stored procedure for complex logic
+async generateMonthlyReport(userId: string, month: string) {
+  return callProcedure('sp_generate_monthly_report', [userId, month])
+}
+```
+
+---
+
+## Security Standards
+
+### 1. Authentication Flow
+
+```typescript
+// services/auth.service.ts
+import jwt from 'jsonwebtoken'
+import bcrypt from 'bcrypt'
+import { executeQuery } from '../lib/database.js'
+
+const JWT_SECRET = process.env.JWT_SECRET!
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h'
+const REFRESH_TOKEN_EXPIRES_IN = '7d'
+
+export class AuthService {
+  /**
+   * Register new user
+   */
+  static async register(data: {
+    email: string
+    password: string
+    name: string
+  }) {
+    // Check if user exists
+    const existing = await this.findByEmail(data.email)
+    if (existing) {
+      throw new Error('Email already registered')
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(data.password, 10)
+    
+    // Create user
+    const [result] = await executeQuery(
+      'INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)',
+      [data.email, hashedPassword, data.name, 'user']
+    )
+    
+    const userId = result.insertId
+    
+    // Generate tokens
+    const { accessToken, refreshToken } = this.generateTokens(userId)
+    
+    // Store refresh token
+    await this.storeRefreshToken(userId, refreshToken)
+    
+    return {
+      user: {
+        id: userId,
+        email: data.email,
+        name: data.name,
+        role: 'user'
+      },
+      accessToken,
+      refreshToken
+    }
+  }
+  
+  /**
+   * Login user
+   */
+  static async login(email: string, password: string) {
+    // Find user
+    const user = await this.findByEmail(email)
+    if (!user) {
+      throw new Error('Invalid credentials')
+    }
+    
+    // Verify password
+    const isValid = await bcrypt.compare(password, user.password)
+    if (!isValid) {
+      throw new Error('Invalid credentials')
+    }
+    
+    // Generate tokens
+    const { accessToken, refreshToken } = this.generateTokens(user.id)
+    
+    // Store refresh token
+    await this.storeRefreshToken(user.id, refreshToken)
+    
+    // Update last login
+    await executeQuery(
+      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
+      [user.id]
+    )
+    
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      },
+      accessToken,
+      refreshToken
+    }
+  }
+  
+  /**
+   * Refresh access token
+   */
+  static async refreshAccessToken(refreshToken: string) {
+    try {
+      // Verify refresh token
+      const decoded = jwt.verify(refreshToken, JWT_SECRET) as any
+      
+      // Check if token is stored
+      const [tokens] = await executeQuery(
+        'SELECT * FROM refresh_tokens WHERE user_id = ? AND token = ? AND expires_at > NOW()',
+        [decoded.userId, refreshToken]
+      )
+      
+      if (!tokens[0]) {
+        throw new Error('Invalid refresh token')
+      }
+      
+      // Generate new access token
+      const accessToken = jwt.sign(
+        { userId: decoded.userId },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+      )
+      
+      return { accessToken }
+    } catch (error) {
+      throw new Error('Invalid refresh token')
+    }
+  }
+  
+  /**
+   * Logout user
+   */
+  static async logout(userId: string, refreshToken: string) {
+    await executeQuery(
+      'DELETE FROM refresh_tokens WHERE user_id = ? AND token = ?',
+      [userId, refreshToken]
+    )
+  }
+  
+  // Private helpers
+  private static generateTokens(userId: string) {
+    const accessToken = jwt.sign(
+      { userId },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    )
+    
+    const refreshToken = jwt.sign(
+      { userId },
+      JWT_SECRET,
+      { expiresIn: REFRESH_TOKEN_EXPIRES_IN }
+    )
+    
+    return { accessToken, refreshToken }
+  }
+  
+  private static async storeRefreshToken(userId: string, token: string) {
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 7)
+    
+    await executeQuery(
+      'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
+      [userId, token, expiresAt]
+    )
+  }
+  
+  private static async findByEmail(email: string) {
+    const [users] = await executeQuery(
+      'SELECT * FROM users WHERE email = ?',
+      [email]
+    )
+    return users[0] || null
+  }
+}
+```
+
+### 2. Rate Limiting
+
+```typescript
+// middleware/rateLimit.middleware.ts
+import rateLimit from 'express-rate-limit'
+
+/**
+ * General API rate limit
+ */
+export const apiRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: {
+    success: false,
+    error: 'Too many requests, please try again later',
+    code: 'RATE_LIMIT_EXCEEDED'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+/**
+ * Strict rate limit for authentication endpoints
+ */
+export const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5, // 5 attempts per 15 minutes
+  message: {
+    success: false,
+    error: 'Too many login attempts, please try again later',
+    code: 'AUTH_RATE_LIMIT_EXCEEDED'
+  },
+  skipSuccessfulRequests: true
+})
+```
+
+### 3. Input Sanitization
+
+```typescript
+// utils/sanitize.util.ts
+import validator from 'validator'
+
+/**
+ * Sanitize string input (prevent XSS)
+ */
+export function sanitizeString(input: string): string {
+  return validator.escape(input.trim())
+}
+
+/**
+ * Sanitize email
+ */
+export function sanitizeEmail(email: string): string {
+  return validator.normalizeEmail(email) || email.toLowerCase().trim()
+}
+
+/**
+ * Sanitize HTML (allow safe tags only)
+ */
+export function sanitizeHtml(html: string): string {
+  // Use library like DOMPurify or sanitize-html
+  return html // Placeholder
+}
+```
+
+---
+
+## Error Handling
+
+### Centralized Error Middleware
+
+```typescript
+// middleware/error.middleware.ts
+import { Request, Response, NextFunction } from 'express'
+
+export class AppError extends Error {
+  constructor(
+    public statusCode: number,
+    public message: string,
+    public code?: string,
+    public details?: any
+  ) {
+    super(message)
+    this.name = 'AppError'
+  }
+}
+
+/**
+ * Centralized error handler
+ */
+export const errorHandler = (
+  error: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  console.error('Error:', {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    path: req.path,
+    method: req.method
+  })
+  
+  // Custom application error
+  if (error instanceof AppError) {
+    return res.status(error.statusCode).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+      details: error.details
+    })
+  }
+  
+  // Database error
+  if (error.name === 'ER_DUP_ENTRY') {
+    return res.status(409).json({
+      success: false,
+      error: 'Resource already exists',
+      code: 'DUPLICATE_ENTRY'
+    })
+  }
+  
+  // JWT errors
+  if (error.name === 'JsonWebTokenError') {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid token',
+      code: 'INVALID_TOKEN'
+    })
+  }
+  
+  if (error.name === 'TokenExpiredError') {
+    return res.status(401).json({
+      success: false,
+      error: 'Token expired',
+      code: 'TOKEN_EXPIRED'
+    })
+  }
+  
+  // Default error
+  res.status(500).json({
+    success: false,
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Internal server error' 
+      : error.message,
+    code: 'INTERNAL_ERROR'
+  })
+}
+
+/**
+ * Not found handler
+ */
+export const notFoundHandler = (req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: 'Route not found',
+    code: 'NOT_FOUND',
+    path: req.path
+  })
+}
+```
+
+**USAGE IN SERVICES**:
+
+```typescript
+// Throw custom errors in services
+if (!user) {
+  throw new AppError(404, 'User not found', 'USER_NOT_FOUND')
+}
+
+if (user.role !== 'admin') {
+  throw new AppError(403, 'Insufficient permissions', 'FORBIDDEN')
+}
+
+if (invalidInput) {
+  throw new AppError(400, 'Invalid input', 'INVALID_INPUT', { 
+    field: 'email',
+    reason: 'Format invalid' 
+  })
+}
+```
+
+---
+
+## Testing Strategy
+
+### 1. Unit Tests (Services)
+
+```typescript
+// tests/unit/user.service.test.ts
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { UserService } from '../../src/services/user.service.js'
+import * as database from '../../src/lib/database.js'
+
+vi.mock('../../src/lib/database.js')
+
+describe('UserService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+  
+  describe('createUser', () => {
+    it('should create user with hashed password', async () => {
+      const mockExecuteQuery = vi.spyOn(database, 'executeQuery')
+        .mockResolvedValue([{ insertId: 1 }])
+      
+      const result = await UserService.createUser({
+        email: 'test@example.com',
+        password: 'Password123!',
+        name: 'Test User'
+      })
+      
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO users'),
+        expect.arrayContaining([
+          'test@example.com',
+          expect.any(String), // hashed password
+          'Test User',
+          'user'
+        ])
+      )
+      
+      expect(result).toMatchObject({
+        id: 1,
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user'
+      })
+    })
+    
+    it('should throw error if email exists', async () => {
+      vi.spyOn(database, 'executeQuery')
+        .mockRejectedValue({ code: 'ER_DUP_ENTRY' })
+      
+      await expect(
+        UserService.createUser({
+          email: 'existing@example.com',
+          password: 'Password123!',
+          name: 'Test'
+        })
+      ).rejects.toThrow()
+    })
+  })
+})
+```
+
+### 2. Integration Tests (Routes)
+
+```typescript
+// tests/integration/auth.routes.test.ts
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import request from 'supertest'
+import app from '../../src/index.js'
+import { testConnection } from '../../src/lib/database.js'
+
+describe('Auth Routes', () => {
+  beforeAll(async () => {
+    const connected = await testConnection()
+    if (!connected) throw new Error('Database not available')
+  })
+  
+  describe('POST /api/auth/register', () => {
+    it('should register new user', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'newuser@example.com',
+          password: 'Password123!',
+          name: 'New User'
+        })
+        .expect(201)
+      
+      expect(response.body).toMatchObject({
+        success: true,
+        data: {
+          user: {
+            email: 'newuser@example.com',
+            name: 'New User',
+            role: 'user'
+          },
+          accessToken: expect.any(String),
+          refreshToken: expect.any(String)
+        }
+      })
+    })
+    
+    it('should return 400 for invalid email', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'invalid-email',
+          password: 'Password123!',
+          name: 'Test'
+        })
+        .expect(400)
+      
+      expect(response.body.success).toBe(false)
+      expect(response.body.code).toBe('VALIDATION_ERROR')
+    })
+  })
+  
+  describe('POST /api/auth/login', () => {
+    it('should login with valid credentials', async () => {
+      // Create test user first
+      await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'login@example.com',
+          password: 'Password123!',
+          name: 'Login Test'
+        })
+      
+      // Login
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'login@example.com',
+          password: 'Password123!'
+        })
+        .expect(200)
+      
+      expect(response.body.success).toBe(true)
+      expect(response.body.data).toHaveProperty('accessToken')
+    })
+    
+    it('should return 401 for invalid password', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'login@example.com',
+          password: 'WrongPassword'
+        })
+        .expect(401)
+      
+      expect(response.body.success).toBe(false)
+    })
+  })
+})
+```
+
+---
+
+## Best Practices & Anti-Patterns
+
+### DO's ✅
+
+1. **Use Environment Variables**: Never hardcode secrets
+2. **Validate All Inputs**: Use Zod schemas at API boundary
+3. **Use Parameterized Queries**: Prevent SQL injection
+4. **Hash Passwords**: Use bcrypt with salt rounds >= 10
+5. **Centralize Error Handling**: Single error middleware
+6. **Log Strategically**: Log errors, not sensitive data
+7. **Use Transactions**: For multi-step database operations
+8. **Type Everything**: Leverage TypeScript fully
+9. **Test Critical Paths**: Auth, payments, data mutations
+10. **Document APIs**: Use OpenAPI/Swagger
+
+### DON'Ts ❌
+
+1. **Don't Put Logic in Routes**: Keep handlers thin
+2. **Don't Log Passwords/Tokens**: Security risk
+3. **Don't Trust Client Input**: Always validate
+4. **Don't Use String Concatenation**: SQL injection risk
+5. **Don't Ignore Errors**: Always handle properly
+6. **Don't Expose Stack Traces**: In production
+7. **Don't Store Passwords Plaintext**: Always hash
+8. **Don't Use `any` Type**: Defeats TypeScript purpose
+9. **Don't Skip Authentication**: For protected routes
+10. **Don't Commit `.env` Files**: Use `.env.example`
+
+### Code Examples
+
+```typescript
+// ✅ GOOD: Proper error handling
+try {
+  const user = await UserService.createUser(data)
+  res.status(201).json({ success: true, data: user })
+} catch (error) {
+  next(error) // Pass to error middleware
+}
+
+// ❌ BAD: Swallow errors
+try {
+  const user = await UserService.createUser(data)
+  res.status(201).json({ success: true, data: user })
+} catch (error) {
+  console.log(error) // Lost error
+  res.json({ success: false })
+}
+```
+
+```typescript
+// ✅ GOOD: Parameterized query
+await executeQuery(
+  'SELECT * FROM users WHERE email = ?',
+  [email]
+)
+
+// ❌ BAD: SQL injection risk
+await executeQuery(
+  `SELECT * FROM users WHERE email = '${email}'`
+)
+```
+
+```typescript
+// ✅ GOOD: Environment variables
+const JWT_SECRET = process.env.JWT_SECRET!
+const PORT = process.env.PORT || 3000
+
+// ❌ BAD: Hardcoded secrets
+const JWT_SECRET = 'my-secret-key'
+const DB_PASSWORD = 'password123'
+```
+
+---
+
+## Configuration & Environment
+
+### Environment Variables
+
+```bash
+# .env.example (commit this)
+# Server
+NODE_ENV=development
+PORT=3001
+
+# Database
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=myapp
+
+# JWT
+JWT_SECRET=your-secret-key-here
+JWT_EXPIRES_IN=1h
+
+# CORS
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3006
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+```
+
+```typescript
+// Validate environment on startup
+import { z } from 'zod'
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']),
+  PORT: z.string().transform(Number),
+  DB_HOST: z.string(),
+  DB_PORT: z.string().transform(Number),
+  DB_USER: z.string(),
+  DB_PASSWORD: z.string(),
+  DB_NAME: z.string(),
+  JWT_SECRET: z.string().min(32),
+  JWT_EXPIRES_IN: z.string()
+})
+
+try {
+  envSchema.parse(process.env)
+} catch (error) {
+  console.error('Invalid environment variables:', error)
+  process.exit(1)
+}
+```
+
+---
+
+## Application Entry Point
+
+```typescript
+// src/index.ts
+import express from 'express'
+import cors from 'cors'
+import helmet from 'helmet'
+import dotenv from 'dotenv'
+import { errorHandler, notFoundHandler } from './middleware/error.middleware.js'
+import { requestLogger } from './middleware/logging.middleware.js'
+import { apiRateLimit } from './middleware/rateLimit.middleware.js'
+import { testConnection } from './lib/database.js'
+
+// Routes
+import authRoutes from './routes/auth.routes.js'
+import userRoutes from './routes/users.routes.js'
+
+// Load environment variables
+dotenv.config()
+
+const app = express()
+const PORT = process.env.PORT || 3001
+
+// Security middleware
+app.use(helmet())
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
+  credentials: true
+}))
+
+// Body parsing
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+
+// Request logging
+app.use(requestLogger)
+
+// Rate limiting
+app.use('/api/', apiRateLimit)
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+// API routes
+app.use('/api/auth', authRoutes)
+app.use('/api/users', userRoutes)
+
+// Error handling
+app.use(notFoundHandler)
+app.use(errorHandler)
+
+// Start server
+async function startServer() {
+  try {
+    // Test database connection
+    const dbConnected = await testConnection()
+    if (!dbConnected) {
+      throw new Error('Database connection failed')
+    }
+    
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`)
+      console.log(`Environment: ${process.env.NODE_ENV}`)
+    })
+  } catch (error) {
+    console.error('Failed to start server:', error)
+    process.exit(1)
+  }
+}
+
+startServer()
+
+export default app
+```
+
+---
+
+## Critical Rules Summary
+
+### ALWAYS
+
+1. Use layered architecture (Routes → Services → Database)
+2. Validate all inputs with Zod schemas
+3. Use parameterized queries (prevent SQL injection)
+4. Hash passwords with bcrypt (minimum 10 rounds)
+5. Authenticate protected routes with JWT middleware
+6. Use environment variables for configuration
+7. Implement centralized error handling
+8. Use connection pooling for database
+9. Log errors with context (not sensitive data)
+10. Write tests for critical business logic
+
+### NEVER
+
+1. Put business logic in route handlers
+2. Concatenate SQL strings (use parameters)
+3. Log passwords, tokens, or sensitive data
+4. Trust client input without validation
+5. Expose detailed errors in production
+6. Use synchronous blocking operations
+7. Store secrets in code or commit `.env`
+8. Ignore error handling
+9. Use `any` type without justification
+10. Skip authentication/authorization checks
+
+---
+
+## Additional Resources
+
+- [Express.js Documentation](https://expressjs.com/)
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
+- [Zod Documentation](https://zod.dev/)
+- [Node.js Best Practices](https://github.com/goldbergyoni/nodebestpractices)
+- [OWASP API Security](https://owasp.org/www-project-api-security/)
+- [MySQL2 Documentation](https://github.com/sidorares/node-mysql2)
+
+---
+
+**VERSION**: 1.0.0  
+**LAST UPDATED**: 2024-01  
+**MAINTAINER**: Development Team  
+**TECH STACK**: Node.js + Express + TypeScript + MySQL

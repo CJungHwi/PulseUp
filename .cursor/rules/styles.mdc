@@ -1,0 +1,306 @@
+# 스타일 가이드 (Style Guide)
+
+이 문서는 프로젝트의 공통 스타일 규칙을 정의합니다.
+
+## 0. 페이지 레이아웃 (Page Layout)
+
+관리자 페이지의 표준 레이아웃 구조입니다. (참조: UserManagement.tsx)
+
+- **페이지 컨테이너 (Page Container)**:
+  - 클래스: `relative h-[calc(100vh-140px)] p-0 flex flex-col gap-[3px] overflow-hidden bg-background`
+  - 설명: 상단 헤더/네비게이션을 제외한 남은 높이(`calc(100vh-140px)`)를 꽉 채우며, 내부 요소 간격은 `3px`로 통일.
+
+## 1. 색상 (Colors)
+
+### 다크 모드 (Dark Mode)
+
+- **헤더 & 사이드바 배경**: `#1d1d1d`
+- **헤더 & 사이드바 텍스트**: `#ffffff` (완전한 흰색)
+- **페이지 배경**: `#020817`
+  - Tailwind: `bg-background` (전역 토큰 사용, 하드코딩 지양)
+  - 설명: 메인 컨텐츠 영역의 배경색입니다.
+- **컴포넌트 표면 (DataTable 제외)**: `#292929`
+  - Tailwind: `bg-card`, `bg-popover`
+  - 설명: 카드, 패널, 입력창, 다이얼로그 등의 배경색입니다.
+- **모든 컴포넌트 테두리**: `#6b7280`
+  - Tailwind: `border-[#6b7280]`
+
+### 라이트 모드 (Light Mode)
+
+- **헤더 & 사이드바 배경**: `#f9fafb`
+- **헤더 & 사이드바 텍스트**: `#1d1d1d`
+- **페이지 배경**: `#ffffff`
+  - Tailwind: `bg-background`
+- **컴포넌트 표면 (DataTable 제외)**: `#f9fafb`
+  - Tailwind: `bg-card`, `bg-popover`
+  - 설명: 카드, 패널, 입력창, 다이얼로그 등의 배경색입니다.
+- **모든 컴포넌트 테두리**: `#343637`
+  - Tailwind: `border-[#343637]`
+
+## 2. 타이포그래피 (Typography)
+
+- **폰트 패밀리**:
+  - 기본: `Inter`
+  - 브랜드 헤더: `Oswald`
+- **헤딩 (Headings)**:
+  - **H1 (페이지 제목)**: `text-2xl font-bold`
+  - **H2 (섹션 제목)**: `text-xl font-bold` 또는 `font-semibold`
+  - **H3 (카드 제목)**: `text-lg font-semibold`
+- **본문 (Body Text)**:
+  - 기본: `text-sm`
+  - 보조/설명: `text-muted-foreground`
+
+## 3. UI 요소 (UI Elements)
+
+### 버튼 & 입력 (Buttons & Inputs)
+
+- **표준 높이**: `h-10` (40px)
+- **작은 높이**: `h-9` (36px)
+- **모서리 둥글기**: `rounded-md`
+- **포커스 상태**: `ring-2 ring-ring` (Offset 2px)
+- **입력창 배경**: `bg-card` (Light: `#f9fafb`, Dark: `#292929`)
+
+#### X 버튼이 포함된 입력창 (Input with Clear Button)
+
+텍스트 입력 시 내용을 한 번에 지울 수 있는 버튼이 포함된 입력창 스타일입니다.
+
+- **컨테이너 (Wrapper)**: `relative`
+- **입력창 (Input)**: `bg-card pr-8` (X 버튼 공간 확보를 위해 `pr-8` 적용)
+- **삭제 버튼 (Clear Button)**: `absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors`
+- **아이콘**: `h-4 w-4` (`X` 아이콘)
+
+#### 날짜 선택 버튼 (Date Selection Button)
+
+표준 날짜 선택 버튼 스타일입니다. (Popover + Calendar 조합)
+
+- **버튼 (Trigger)**:
+  - 클래스: `min-w-[150px] justify-between text-left border-[#343637] dark:border-[#6b7280] h-9 text-xs`
+  - 설명: 최소 너비 확보, 양끝 정렬(`justify-between`), 공통 테두리 색상 및 작은 폰트 크기(`text-xs`) 적용.
+- **아이콘 (CalendarIcon)**: `ml-2 h-4 w-4` (버튼 우측 배치)
+- **팝업 (PopoverContent)**: `w-auto p-0` (달력 크기에 맞춤)
+- **표시 형식 (Format)**: `YYYY년 MM월 DD일` (Dayjs) / `yyyy년 MM월 dd일` (date-fns)
+
+#### 년월 선택 (MonthInput)
+
+필터 섹션 등에서 사용되는 년월(YYYY-MM) 선택 스타일입니다.
+
+- **라벨 (Label)**: `text-[11px] text-muted-foreground leading-none`
+- **입력창 (MonthInput)**:
+  - 클래스: `w-full border-[#343637] dark:border-[#6b7280] bg-card h-9 text-xs`
+  - 설명: 카드 배경색(`bg-card`), 공통 테두리 색상, 작은 높이(`h-9`) 및 폰트 크기(`text-xs`) 적용.
+- **표시 형식 (Format)**: `YYYY년 MM월`
+
+### 스낵바 (Snackbar / Toast)
+
+`alert()` 대신 전역 Snackbar/Toast 컴포넌트를 사용한다.
+
+- **기본 위치**: `top-center`
+- **표시 방식**: 상태에 따른 색상 구분 (success/info/warning/error)
+- **줄바꿈 (Multiline)**: 메시지 내 `\n`을 그대로 보이게 하기 위해 `white-space: pre-line` 적용
+- **기본 지속시간 (Auto Hide)**:
+  - `success/info/warning`: 2500ms
+  - `error`: 4500ms
+- **사용 규칙**:
+  - 단순 안내/성공/경고/오류는 Snackbar로만 표시한다(브라우저 `alert()` 금지).
+  - 사용자 입력이 필요한 확인은 `ConfirmDialog` 또는 `window.confirm`(기존 패턴 유지)을 사용한다.
+
+### 아이콘 (Icons)
+
+- **섹션 타이틀용**: `h-5 w-5` (20px)
+- **버튼/인라인용**: `h-4 w-4` (16px)
+- **선 두께**: 기본값 (Lucide 표준)
+
+### 그림자 효과 (Sort of Depth)
+
+- **컨테이너 그림자**: `shadow-md`
+  - 설명: 대시보드 카드 등 주요 컨테이너에 입체감을 주기 위해 사용합니다.
+
+### 간격 (Spacing)
+
+- **박스 간 간격**: `3px` (`gap-[3px]`)
+
+### 메인 카드 스타일 (Main Card Style)
+
+페이지의 주요 컨텐츠를 담는 큰 카드 스타일입니다. (예: 대시보드 패널, 메인 기능 영역 등)
+
+- **컨테이너 (Card)**:
+  - 클래스: `h-full flex flex-col bg-card shadow-md`
+  - 설명: 전체 높이 사용, Flex 컬럼 레이아웃, 배경색 및 그림자 적용.
+
+- **헤더 (CardHeader)**:
+  - 클래스: `h-12 px-4 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0`
+  - 높이: `h-12` (48px)
+  - 패딩: `px-4 py-0`
+  - 정렬: 가로 정렬 (`flex-row`), 양끝 정렬 (`justify-between`), 세로 중앙 (`items-center`)
+  - 오버라이드: 기본 `space-y-*` 제거 (`space-y-0`)
+
+- **제목 (CardTitle)**:
+  - 클래스: `text-lg font-bold flex items-center gap-2 leading-none`
+  - 폰트 크기: `text-lg` (18px)
+  - 아이콘: `w-5 h-5` (20px)
+
+- **컨텐츠 (CardContent)**:
+  - 클래스: `flex-1 min-h-0 flex flex-col gap-[3px] p-4`
+  - 설명: 남은 공간 채움 (`flex-1`), 내부 스크롤을 위한 `min-h-0`, 내부 요소 간격 `3px`, 패딩 `p-4`.
+
+---
+
+## 3. 다이얼로그 스타일 (Dialog Style)
+
+메인 카드 스타일과 일관성을 유지하기 위해 다이얼로그 헤더에도 동일한 스타일을 적용합니다.
+
+- **헤더 (DialogHeader)**:
+  - 클래스: `h-12 px-4 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0`
+  - 설명: 카드 헤더와 동일한 높이 및 배경색 적용.
+
+- **제목 (DialogTitle)**:
+  - 클래스: `text-lg font-bold flex items-center gap-2 leading-none`
+  - 설명: 카드 제목과 동일한 폰트 크기 및 아이콘 간격 적용.
+
+#### 서브 카드 스타일 (Sub Card Style)
+
+메인 컨텐츠 내부에서 구획을 나누거나 보조 정보를 표시할 때 사용하는 작은 카드 스타일입니다. (예: 메모, 영상 미리보기 등)
+
+- **컨테이너 (Card)**:
+  - 클래스: `flex flex-col overflow-hidden border border-[#343637] dark:border-[#6b7280] shadow-md`
+  - 설명: Flex 컬럼 레이아웃, 오버플로우 숨김, 테두리 및 그림자 적용.
+
+- **헤더 (CardHeader)**:
+  - 클래스: `h-8 px-3 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0 border-[#343637] dark:border-[#6b7280]`
+  - 높이: `h-10` (40px) - 일반 카드 헤더보다 작음
+  - 패딩: `px-3 py-0`
+  - 정렬: 가로 정렬 (`flex-row`), 양끝 정렬 (`justify-between`), 세로 중앙 (`items-center`)
+
+- **제목 (CardTitle)**:
+  - 클래스: `text-xs font-bold`
+  - 폰트 크기: `text-xs` (12px)
+
+- **컨텐츠 (CardContent)**:
+  - 클래스: `p-2`
+  - 패딩: `p-2` (8px)
+
+- **입력 필드 (Textarea/Input)**:
+  - 클래스: `text-xs bg-card border-[#343637] dark:border-[#6b7280] resize-none`
+  - 폰트 크기: `text-xs`
+  - 배경: `bg-card`
+  - 테두리: 공통 테두리 색상 사용
+
+### 탭 (Tabs)
+
+- **목표**: Light/Dark 모두에서 탭의 활성/비활성 상태가 즉시 구분되도록 대비를 확보한다.
+- **TabsList (권장 클래스)**: `grid grid-cols-2 h-9 mb-[3px] bg-muted/40 dark:bg-gray-800/60 border border-[#343637] dark:border-[#6b7280] p-1`
+- **TabsTrigger (권장 클래스)**:
+  - 기본: `text-xs font-bold text-muted-foreground hover:bg-muted/60 dark:hover:bg-gray-700/60`
+  - 활성(Active): `data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none`
+- **주의**: 탭도 DataTable과 동일하게, 상태 변화에서 `font-weight` 변화로 레이아웃이 흔들리지 않도록 기본은 고정된 굵기(예: `font-bold`)로 유지한다.
+
+## 4. 컴포넌트별 가이드 (Component Specs)
+
+### 사이드바 (Sidebar)
+
+- **접힌 상태 (Collapsed)**:
+  - 아이템 간격: `gap-4` (16px)
+  - 상하 패딩: `py-4`
+  - 아이콘 정렬: `justify-center`
+
+### 데이터 테이블 (DataGrid / DataTable)
+
+**레이아웃 (Layout)**
+
+- **스크롤 방식**: 무한 스크롤(Infinite Scroll) 사용 (페이지네이션 미사용)
+- **간격**: 부모 컨테이너와 여백 없이 밀착 (`p-0`)
+- **높이**: 부모 컨테이너의 남은 공간 채움 (`h-full` 또는 `flex-1`)
+- **테이블 레이아웃**: `w-full table-fixed border-separate border-spacing-0` 사용 (컬럼 폭 고정 + 셀 경계선/고정 헤더 표현 안정화)
+
+**치수 (Dimensions)**
+
+- **헤더 높이**: `45px`
+- **행 높이**: `35px`
+- **모서리**: 부모 컨테이너의 형태를 따름 (별도 `rounded` 미사용)
+
+**폰트 (Typography)**
+
+- **헤더 폰트 크기**: `text-xs` (12px)
+- **행(데이터) 폰트 크기**: `text-xs` (12px)
+
+**색상 (Colors)**
+
+- **헤더 배경**:
+  - Light: `#b9adb5`
+  - Dark: `bg-gray-800` (또는 테마 기본값)
+- **헤더 텍스트**:
+  - Light: `#27272a`
+  - Dark: `#94a3b8`
+  - 적용: `ShadcnTableHead` 컴포넌트에 직접 클래스 적용
+- **행 배경**:
+  - Light: `#f9fafb`
+  - Dark: `#1d1d1d`
+- **빈 공간 배경**:
+  - Light: `#f9fafb`
+  - Dark: `#1d1d1d`
+- **테두리**:
+  - Light: `#343637`
+  - Dark: `#6b7280`
+
+**호버 스타일 (Hover Styles)**
+
+- **원칙**: 호버/선택 상태에서 `font-weight`(예: `font-bold`)를 변경하지 않는다. (글자 폭 변화로 컬럼 폭이 재계산되어 셀 테두리/레이아웃이 흔들릴 수 있음)
+- **Light Mode**: 텍스트 파란색(`text-blue-600`) + 배경 강조(예: `hover:bg-muted/30`)
+- **Dark Mode**: 텍스트 노란색(`text-yellow-400`) + 배경 강조(예: `hover:bg-muted/30`)
+- **오버라이드 규칙**: `text-muted-foreground` 등 특정 색상이 지정된 셀도 `group-hover`를 사용하여 위 호버 스타일을 강제 적용해야 함.
+
+**선택 스타일 (Selected Styles)**
+
+- **원칙**: 선택된 행을 시각적으로 구분하되, 텍스트 색상은 호버 시에만 변경되도록 한다.
+- **배경색**: `bg-primary/20` (Light/Dark 공통)
+- **적용**: `selectedId === row.id && "bg-primary/20"`
+- **셀 설정**: 모든 셀에 `group-hover:text-inherit transition-colors`를 적용하여 호버 시 텍스트 색상 변화가 자연스럽게 상속되도록 한다.
+
+**테두리 (Borders)**
+
+- **가로(Horizontal)**: 없음 (`border-b` 없음)
+- **세로(Vertical)**: 있음 (`border-r`, 마지막 컬럼 제외)
+- **색상**: Light(`border-[#343637]`), Dark(`border-[#6b7280]`)
+
+**헤더 고정 (Sticky Header)**
+
+- `TableHeader`에 `sticky top-0 z-10` 적용
+- 헤더내 텍스트는 align-center 적용
+- 스크롤 시에도 헤더 배경색 유지
+
+**스크롤 UX**
+
+- 스크롤 영역에 `scrollbar-hide`를 적용하여 스크롤바를 숨깁니다(필요 시).
+
+**툴팁 (Tooltip)**
+
+DataTable의 모든 셀에 마우스를 올리면 전체 내용을 확인할 수 있도록 tooltip을 표시합니다.
+
+- **컴포넌트**: shadcn/ui의 `Tooltip`, `TooltipTrigger`, `TooltipContent`, `TooltipProvider` 사용
+- **Provider**: 최상위 컴포넌트를 `TooltipProvider`로 감싸서 전역 tooltip 지원
+- **적용 규칙**:
+  - `truncate`가 적용된 모든 셀에 tooltip 추가
+  - `TooltipTrigger`는 `asChild` prop 사용하여 기존 요소를 trigger로 사용
+  - `TooltipContent`는 기본 스타일 사용 (`bg-popover`, `text-popover-foreground`)
+  - 긴 텍스트의 경우 `max-w-xs`로 최대 너비 제한
+  - 여러 줄 텍스트(예: 공지사항 내용)의 경우 `whitespace-pre-wrap` 적용
+- **스타일**:
+  - 기본 배경: `bg-popover` (Light: `#f9fafb`, Dark: `#292929`)
+  - 기본 텍스트: `text-popover-foreground`
+  - 패딩: `px-3 py-1.5`
+  - 애니메이션: `animate-in fade-in-0 zoom-in-95`
+  - 위치: 자동 감지 (기본 `side="top"`, 필요시 `side="right"`, `side="left"` 등 지정)
+- **사용 예시**:
+  ```tsx
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <div className="truncate w-full">{text}</div>
+    </TooltipTrigger>
+    <TooltipContent>
+      <p className="max-w-xs">{text}</p>
+    </TooltipContent>
+  </Tooltip>
+  ```
+- **주의사항**:
+  - VideoTooltip과 함께 사용할 경우, Tooltip을 VideoTooltip 내부에 중첩하여 사용
+  - 공지사항 내용 등 긴 텍스트는 `whitespace-pre-wrap`을 사용하여 줄바꿈 유지

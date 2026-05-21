@@ -1,0 +1,154 @@
+import type { WorkoutModuleContext } from '../shared/base-module'
+import { log } from '../shared/base-module'
+import { PreloadManager } from '../shared/preload-manager'
+import { buildTimelineForLoop, getPreloadWindow } from '../shared/timeline-utils'
+
+/**
+ * Stress와 동일한 패턴: 타임라인 프리로드 + 다음 그룹 6슬롯 + CD 프리로드
+ */
+export const preloadLoopFromTimeline = (ctx: WorkoutModuleContext, currentIndex: number): void => {
+  if (!ctx.activePlaySession) return
+  try {
+    const { flat } = buildTimelineForLoop(ctx.activePlaySession.sequences)
+    const window = getPreloadWindow(flat, currentIndex, 6)
+    if (window.length === 0) return
+    const sequences = window.map((e) => ({ ...e.sequence, position: e.position }))
+    const preloadKey = `loop-timeline:${currentIndex}`
+    if (ctx.preloadedGroupKeys.has(preloadKey)) return
+    ctx.preloadedGroupKeys.add(preloadKey)
+    ctx.broadcastToAllWindows('workout-play-preload', {
+      round: 0,
+      groupIndex: 0,
+      sequences,
+      syncStartAtMs: Date.now(),
+      metadata: ctx.activePlaySession.metadata,
+    })
+    log(`📹 [LoopModule] 타임라인 프리로드: ${sequences.length}개 (currentIndex: ${currentIndex})`)
+  } catch (err) {
+    log(`⚠️ [LoopModule] 타임라인 프리로드 실패:`, err)
+  }
+}
+
+const collectGroupSequences = (
+  ctx: WorkoutModuleContext,
+  currentGroupIndex: number,
+): any[] => {
+  const nextGroupBase = (currentGroupIndex + 1) * 3 + 1
+  const nextGroupPositions = new Set<string>()
+  for (let i = 0; i < 3; i++) {
+    nextGroupPositions.add(`L${nextGroupBase + i}`)
+    nextGroupPositions.add(`R${nextGroupBase + i}`)
+  }
+  const nextPosMap = new Map<string, any>()
+  for (const seq of ctx.activePlaySession!.sequences) {
+    if (
+      seq.round > 0 &&
+      seq.round < 99 &&
+      seq.exercise_type === 'exercise' &&
+      nextGroupPositions.has(seq.position || '') &&
+      !nextPosMap.has(seq.position || '')
+    ) {
+      nextPosMap.set(seq.position || '', seq)
+    }
+  }
+  return Array.from(nextPosMap.values())
+}
+
+/** 다음 전·후반 그룹(6포지션) 영상 프리로드 — Stress preloadNextStressGroup 와 동일 구조 */
+export const preloadNextLoopGroup = (
+  ctx: WorkoutModuleContext,
+  loopGroupIndex: number,
+  currentRound: number,
+): void => {
+  const nextGroupSeqs = collectGroupSequences(ctx, loopGroupIndex)
+  if (nextGroupSeqs.length === 0) return
+  const nextKey = `loop:${loopGroupIndex + 1}`
+  if (ctx.preloadedGroupKeys.has(nextKey)) return
+  ctx.preloadedGroupKeys.add(nextKey)
+  ctx.broadcastToAllWindows('workout-play-preload', {
+    round: currentRound,
+    groupIndex: loopGroupIndex + 1,
+    sequences: nextGroupSeqs,
+    syncStartAtMs: Date.now(),
+    metadata: ctx.activePlaySession!.metadata,
+  })
+}
+
+export const preloadCoolDownForLoop = (ctx: WorkoutModuleContext, preloadManager: PreloadManager): void => {
+  if (!ctx.activePlaySession) return
+  const hasCd = ctx.activePlaySession.sequences.some(
+    (s) =>
+      Number(s.round) === 99 &&
+      s.exercise_type === 'exercise' &&
+      s.exercise_name !== '임시운동' &&
+      s.duration > 0,
+  )
+  if (!hasCd) return
+  preloadManager.requestPreloadForStretchingGroup(ctx, 99, 0)
+  log('📹 [LoopModule] CD 영상 프리로드 요청')
+}
+
+/** 물보충 중 다음 메인 그룹 영상 선로드 — Stress preloadNextGroupDuringWater 대응 */
+export const preloadNextLoopGroupDuringWater = (
+  ctx: WorkoutModuleContext,
+  currentSeq: any,
+  currentIndex: number,
+  currentRound: number,
+): void => {
+  const nextExercise = ctx.activePlaySession!.sequences.slice(currentIndex + 1).find(
+    (s) =>
+      s.round > 0 &&
+      s.round < 99 &&
+      s.exercise_type === 'exercise' &&
+      s.exercise_name !== '임시운동' &&
+      s.duration > 0,
+  )
+  if (!nextExercise) return
+
+  const nextPosMatch = (nextExercise.position || '').match(/^[LR](\d+)$/)
+  const nextPosNum = nextPosMatch ? parseInt(nextPosMatch[1], 10) : 1
+  const nextLoopGroupIndex = Math.floor((nextPosNum - 1) / 3)
+  const nextGroupBase = nextLoopGroupIndex * 3 + 1
+  const nextGroupPositions = new Set<string>()
+  for (let i = 0; i < 3; i++) {
+    nextGroupPositions.add(`L${nextGroupBase + i}`)
+    nextGroupPositions.add(`R${nextGroupBase + i}`)
+  }
+
+  const nextPosMap = new Map<string, any>()
+  for (const seq of ctx.activePlaySession!.sequences) {
+    if (
+      seq.round > 0 &&
+      seq.round < 99 &&
+      seq.exercise_type === 'exercise' &&
+      nextGroupPositions.has(seq.position || '') &&
+      !nextPosMap.has(seq.position || '')
+    ) {
+      nextPosMap.set(seq.position || '', seq)
+    }
+  }
+
+  const nextActiveSet = {
+    left: nextLoopGroupIndex > 0 ? 'set2' : 'set1',
+    right: nextLoopGroupIndex > 0 ? 'set2' : 'set1',
+  } as const
+
+  log(`💧 [LoopModule] 물보충 중 다음 그룹 영상 로드 (Group ${nextLoopGroupIndex + 1})`)
+  const syncStartAtMs = Date.now() + 1000
+  for (const k of nextPosMap.keys()) {
+    const seq = nextPosMap.get(k)!
+    ctx.broadcastToAllWindows('workout-play-sequence', {
+      sequence: seq,
+      round: currentRound,
+      totalRounds: ctx.activePlaySession!.totalRounds,
+      duration: currentSeq.duration,
+      position: seq.position,
+      activeSet: nextActiveSet,
+      sequenceIndex: currentIndex,
+      totalSequences: ctx.activePlaySession!.sequences.length,
+      metadata: ctx.activePlaySession!.metadata,
+      syncStartAtMs,
+      isVideoPreload: true,
+    })
+  }
+}

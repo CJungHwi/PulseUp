@@ -1,0 +1,103 @@
+/* 심박수 차트 컴포넌트 스타일 */
+
+.heart-rate-chart {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  margin: 20px 0;
+  border: 1px solid #e0e0e0;
+}
+
+.heart-rate-chart canvas {
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.chart-legend {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.chart-legend h4 {
+  margin: 0 0 15px 0;
+  font-size: 1rem;
+  color: #333;
+  text-align: center;
+}
+
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 15px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.legend-label {
+  white-space: nowrap;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .heart-rate-chart {
+    padding: 15px;
+    margin: 15px 0;
+  }
+
+  .legend-items {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .legend-item {
+    justify-content: center;
+  }
+}
+
+/* 다크 모드 지원 */
+@media (prefers-color-scheme: dark) {
+  .heart-rate-chart {
+    background: #2d3748;
+    border-color: #4a5568;
+    color: #e2e8f0;
+  }
+
+  .heart-rate-chart canvas {
+    background: #1a202c;
+  }
+
+  .chart-legend {
+    border-top-color: #4a5568;
+  }
+
+  .chart-legend h4 {
+    color: #e2e8f0;
+  }
+
+  .legend-item {
+    color: #cbd5e0;
+  }
+
+  .legend-color {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+}

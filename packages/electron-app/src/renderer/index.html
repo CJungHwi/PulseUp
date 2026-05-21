@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Monitor Workout System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000;
+            color: #fff;
+        }
+
+        .display-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* 운동 그리드 등 전체 면을 쓰는 화면: 중앙 정렬로 생기는 테두리/여백 제거 */
+        #app.display-container {
+            align-items: stretch;
+            justify-content: flex-start;
+        }
+
+        #app.display-container.control-display {
+            align-items: center;
+            justify-content: center;
+        }
+
+        .workout-display {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .timer-display {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .background-display {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .control-display {
+            background: #1a1a1a;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+        }
+
+        .video-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .video-player {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .display-title {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .display-subtitle {
+            font-size: 1.5rem;
+            opacity: 0.8;
+            text-align: center;
+            max-width: 600px;
+        }
+
+        .heart-rate-display {
+            position: absolute;
+            top: 50px;
+            right: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            min-width: 200px;
+        }
+
+        .heart-rate-value {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #ff4757;
+        }
+
+        .heart-rate-label {
+            font-size: 1rem;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .timer-display-content {
+            text-align: center;
+        }
+
+        .timer-value {
+            font-size: 6rem;
+            font-weight: bold;
+            margin-bottom: 2rem;
+            font-family: 'Courier New', monospace;
+        }
+
+        .workout-info {
+            position: absolute;
+            bottom: 50px;
+            left: 50px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 400px;
+        }
+
+        .workout-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .workout-description {
+            font-size: 1rem;
+            opacity: 0.8;
+            line-height: 1.4;
+        }
+
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 350px;
+            margin: 0 auto;
+        }
+
+        .control-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+
+        .control-button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 5px;
+            transition: background-color 0.3s;
+        }
+
+        .control-button:hover {
+            background: #45a049;
+        }
+
+        .control-button.danger {
+            background: #f44336;
+        }
+
+        .control-button.danger:hover {
+            background: #da190b;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-active {
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        .status-inactive {
+            background: #757575;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #fff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-right: 15px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Splash Screen Styles */
+        .splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            transition: opacity 0.5s ease-out;
+        }
+
+        .splash-screen.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .splash-logo-container {
+            margin-bottom: 40px;
+            animation: fadeInScale 0.8s ease-out;
+        }
+
+        .splash-logo {
+            max-width: 400px;
+            width: 80vw;
+            height: auto;
+            filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.5));
+        }
+
+        .splash-label-container {
+            animation: fadeInUp 1s ease-out 0.3s backwards;
+        }
+
+        .splash-label {
+            font-size: 2.6rem;
+            font-weight: 600;
+            color: #ffffff;
+            text-align: center;
+            padding: 20px 40px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            letter-spacing: 1px;
+        }
+
+        @keyframes fadeInScale {
+            0% {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes fadeInUp {
+            0% {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .splash-logo {
+                max-width: 300px;
+            }
+
+            .splash-label {
+                font-size: 1.5rem;
+                padding: 15px 30px;
+            }
+        }
+    </style>
+    <!-- Vimeo Player SDK -->
+    <script src="https://player.vimeo.com/api/player.js"></script>
+</head>
+
+<body>
+    <!-- Splash Screen -->
+    <div class="splash-screen" id="splash-screen">
+        <div class="splash-logo-container">
+            <img src="./assets/logo.png" alt="LINKHIIT Logo" class="splash-logo" />
+        </div>
+        <div class="splash-label-container">
+            <div class="splash-label" id="splash-label">
+                링크힛 운동 시스템
+            </div>
+        </div>
+        <!-- 등록 코드 표시 영역 -->
+        <div class="register-code-container" id="register-code-container" style="display: none;">
+            <div class="register-code-title">디바이스 등록 코드</div>
+            <div class="register-code" id="register-code">------</div>
+            <div class="register-code-expire" id="register-code-expire"></div>
+        </div>
+    </div>
+    
+    <style>
+        .register-code-container {
+            margin-top: 40px;
+            padding: 30px 50px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            text-align: center;
+            animation: fadeInUp 1s ease-out 0.5s backwards;
+        }
+        
+        .register-code-title {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 15px;
+            letter-spacing: 2px;
+        }
+        
+        .register-code {
+            font-size: 4rem;
+            font-weight: 900;
+            font-family: 'Courier New', monospace;
+            color: #4CAF50;
+            letter-spacing: 15px;
+            text-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+        }
+        
+        .register-code-expire {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 15px;
+        }
+        
+        .register-code-container.registered {
+            border-color: #4CAF50;
+        }
+        
+        .register-code-container.registered .register-code {
+            color: #4CAF50;
+        }
+        
+        .register-code-container.registered .register-code-title {
+            color: #4CAF50;
+        }
+    </style>
+
+    <!-- Main App -->
+    <div id="app" class="display-container">
+        <div class="loading">
+            <div class="spinner"></div>
+            시스템 초기화 중...
+        </div>
+    </div>
+
+    <script type="module" src="./renderer/renderer.js"></script>
+</body>
+
+</html>

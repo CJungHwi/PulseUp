@@ -1,0 +1,45 @@
+import type { QueueBuildResult, ScreenModeKind } from '../shared/queue-builder-types'
+import {
+  filterPlayableExercises,
+  classifyByPhase,
+  splitIntoTwoGroups,
+  classifyMainByPosition,
+  fillStandardSlotQueues,
+  fillFiveScreenSlotQueues,
+} from '../shared/queue-builder-base'
+
+/**
+ * Stress 서킷 큐 빌더
+ *
+ * 3-screen 슬롯별 순서 (좌측 기준):
+ *   slot1: DS1 → DS4 → L1 → L4 → CD1 → CD4
+ *   slot2: DS2 → DS5 → L2 → L5 → CD2 → CD5
+ *   slot3: DS3 → DS6 → L3 → L6 → CD3 → CD6
+ *
+ * 5-screen 모드: 좌2/우2 패널을 추가로 반환 (L4·L5·L6 / R4·R5·R6 전담).
+ */
+export function buildStressQueue(
+  sequences: any[],
+  _metadata: any,
+  screenMode: ScreenModeKind = 'three',
+): QueueBuildResult {
+  const exercises = filterPlayableExercises(sequences)
+  const { dsExercises, mainExercises, cdExercises } = classifyByPhase(exercises)
+  const [dsGroup1, dsGroup2] = splitIntoTwoGroups(dsExercises)
+  const [cdGroup1, cdGroup2] = splitIntoTwoGroups(cdExercises)
+  const mainSets = classifyMainByPosition(mainExercises)
+
+  if (screenMode === 'five') {
+    return {
+      leftQueues: fillFiveScreenSlotQueues('L1', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
+      rightQueues: fillFiveScreenSlotQueues('R1', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
+      leftQueues2: fillFiveScreenSlotQueues('L2', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
+      rightQueues2: fillFiveScreenSlotQueues('R2', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
+    }
+  }
+
+  return {
+    leftQueues: fillStandardSlotQueues('L', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
+    rightQueues: fillStandardSlotQueues('R', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
+  }
+}

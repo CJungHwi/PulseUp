@@ -1,0 +1,52 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src"
+, "../../docs/backup/PowerCircuit", "../../docs/backup/FunctionalCircuit", "../../docs/backup/CircuitTraining", "../../docs/backup/CoreCarryFocus"  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__tests__/**",
+    "src/pages/none/**/*",
+    "src/pages/exercises/AMRAP/**",
+    "../../docs/backup/CircuitTraining/**",
+    "../../docs/backup/CoreCarryFocus/**",
+    "src/pages/exercises/EMOM/**",
+    "../../docs/backup/FunctionalCircuit/**",
+    "../../docs/backup/PowerCircuit/**",
+    "src/components/HeartRate/**",
+    "src/services/heartRateApi.ts"
+  ]
+}

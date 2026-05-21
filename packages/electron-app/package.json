@@ -1,0 +1,128 @@
+{
+  "name": "electron-app",
+  "version": "1.8.12",
+  "description": "LINKHIIT Multi-Monitor Workout System",
+  "author": "LINKHIIT Team",
+  "private": true,
+  "main": "dist/main/main/main.js",
+  "scripts": {
+    "dev": "cross-env API_SERVER_URL=https://linkhiit.co.kr concurrently \"npm run build:watch\" \"npm run electron:dev\"",
+    "dev:local": "cross-env API_SERVER_URL=http://localhost:3001 concurrently \"npm run build:watch\" \"npm run electron:dev\"",
+    "generate-cert": "node build-scripts/generate-cert.js",
+    "build": "npm run generate-cert && npm run build:main && npm run build:preload && npm run build:renderer && npm run copy:assets && npm run copy:icon && npm run copy:cert",
+    "copy:assets": "node -e \"const fs=require('fs'),p=require('path'); fs.mkdirSync('dist/renderer',{recursive:true}); fs.copyFileSync('src/renderer/index.html','dist/renderer/index.html'); const cp=(src,dst)=>{if(!fs.existsSync(src))return; fs.mkdirSync(dst,{recursive:true}); for(const e of fs.readdirSync(src,{withFileTypes:true})){const s=p.join(src,e.name),d=p.join(dst,e.name); if(e.isDirectory())cp(s,d); else fs.copyFileSync(s,d);}}; cp('src/renderer/assets','dist/renderer/assets');\"",
+    "copy:cert": "node -e \"const fs=require('fs'),p=require('path'); const src='cert',dst='dist/cert'; if(fs.existsSync(src)){fs.mkdirSync(dst,{recursive:true}); fs.readdirSync(src).forEach(f=>fs.copyFileSync(p.join(src,f),p.join(dst,f)));}\"",
+    "copy:icon": "node build-scripts/copy-icon.js",
+    "build:main": "tsc --project tsconfig.main.json",
+    "build:preload": "tsc --project tsconfig.preload.json",
+    "build:renderer": "tsc --project tsconfig.renderer.json",
+    "build:watch": "concurrently \"npm run build:main -- --watch\" \"npm run build:preload -- --watch\" \"npm run build:renderer -- --watch\"",
+    "electron:dev": "chcp 65001 && wait-on dist/main/main/main.js && electron --js-flags=\"--max-old-space-size=8192\" .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext ts --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "@vimeo/player": "^2.30.1",
+    "ant-plus-next": "^0.3.2",
+    "axios": "^1.3.0",
+    "node-hid": "^3.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "selfsigned": "^2.4.1",
+    "undici": "^5.29.0",
+    "usb": "^2.16.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/electron": "^1.4.38",
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.10",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "concurrently": "^8.0.0",
+    "cross-env": "^10.1.0",
+    "electron": "28.0.0",
+    "electron-builder": "^24.0.0",
+    "electron-rebuild": "^3.2.9",
+    "eslint": "^8.0.0",
+    "sharp": "^0.33.0",
+    "spawn-command": "^0.0.2",
+    "typescript": "^5.0.0",
+    "vitest": "^0.34.0",
+    "wait-on": "^7.0.0"
+  },
+  "build": {
+    "appId": "com.linkhiit.workout",
+    "productName": "LINKHIIT Workout System",
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LINKHIIT Workout",
+      "include": "build/installer-env.nsh"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.healthcare-fitness",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Sports",
+      "icon": "build/icon.png"
+    },
+    "protocols": [
+      {
+        "name": "LINKHIIT Protocol",
+        "schemes": [
+          "linkhiit"
+        ]
+      }
+    ],
+    "afterPack": "build-scripts/afterPack.js"
+  }
+}

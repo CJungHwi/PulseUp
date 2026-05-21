@@ -1,0 +1,696 @@
+# Web Application Development Standards
+
+## Context & Purpose
+
+You are developing a **React-based web application** with modern tooling and best practices. This document defines the architectural patterns, coding standards, and component usage rules that ensure consistency, maintainability, and scalability across the codebase.
+
+**Target Audience**: AI assistants, developers onboarding to React/TypeScript web projects.
+
+**Design System**: For detailed styling rules, colors, and component specifications, refer to `styles.mdc`.
+
+---
+
+## Technology Stack
+
+### Core Framework
+
+- **React 18+** with functional components and hooks
+- **TypeScript** with ES2020+ target
+- **Vite** for development server and build tooling
+
+### UI & Styling
+
+- **Primary UI Framework**: shadcn/ui (Radix UI primitives)
+- **Utility CSS**: Tailwind CSS v3+
+- **Icons**: Lucide React
+- **Styling Approach**: Utility-first with Tailwind classes
+
+### State Management
+
+- **Global State**: Redux Toolkit
+- **Server State**: React Query (optional)
+- **Form State**: React Hook Form + Zod validation (recommended)
+
+### Routing & Navigation
+
+- **React Router v6+** for client-side routing
+- Protected routes with role-based access control
+
+### HTTP & API
+
+- **axios** for HTTP requests
+- Centralized API service layer (no direct axios calls in components)
+- Request/response interceptors for auth tokens and error handling
+
+### Testing
+
+- **Vitest** for unit and integration tests
+- **Testing Library** for component testing
+
+---
+
+## Project Structure
+
+```
+src/
+├── App.tsx                      # Root component with routing
+├── main.tsx                     # Application entry point
+│
+├── components/                  # Reusable UI components
+│   ├── ui/                      # Base UI components (shadcn/ui)
+│   │   ├── button.tsx
+│   │   ├── dialog.tsx
+│   │   ├── data-table.tsx       # Standardized table component
+│   │   └── ...
+│   ├── common/                  # Shared components
+│   └── [feature]/               # Feature-specific components
+│
+├── pages/                       # Route-level page components
+│   ├── Auth/
+│   ├── Dashboard/
+│   └── [Feature]/
+│
+├── layouts/                     # Page layout wrappers
+│   ├── MainLayout.tsx
+│   ├── AuthLayout.tsx
+│   └── components/              # Layout sub-components
+│       ├── Header.tsx
+│       ├── Sidebar.tsx
+│       └── ...
+│
+├── services/                    # API communication layer
+│   ├── api.ts                   # Axios instance configuration
+│   ├── [resource].service.ts   # Resource-specific services
+│   └── types.ts                 # API request/response types
+│
+├── store/                       # Redux state management
+│   ├── store.ts                 # Store configuration
+│   ├── index.ts                 # Exports
+│   └── slices/                  # Feature slices
+│       ├── authSlice.ts
+│       └── [feature]Slice.ts
+│
+├── hooks/                       # Custom React hooks
+│   ├── redux.ts                 # Typed Redux hooks
+│   ├── useAuth.ts
+│   └── [custom].ts
+│
+├── contexts/                    # React Context providers
+│   ├── ThemeContext.tsx
+│   └── [Custom]Context.tsx
+│
+├── themes/                      # MUI theme configuration
+│   ├── designTokens.ts          # Color palette, spacing, etc.
+│   └── muiTheme.ts              # MUI theme factory
+│
+├── types/                       # TypeScript type definitions
+│   ├── [domain].ts
+│   └── api.ts
+│
+├── utils/                       # Utility functions
+│   ├── cn.ts                    # Tailwind class merger
+│   └── [helper].ts
+│
+└── lib/                         # Third-party library configs
+    └── constants.ts
+```
+
+---
+
+## Architectural Patterns
+
+### 1. Component Organization
+
+#### ATOMIC DESIGN PRINCIPLE
+
+```
+Atoms → Molecules → Organisms → Templates → Pages
+```
+
+**Implementation**:
+
+- `components/ui/` = Atoms (buttons, inputs)
+- `components/common/` = Molecules (search bars, cards)
+- `components/[Feature]/` = Organisms (feature sections)
+- `layouts/` = Templates
+- `pages/` = Pages
+
+#### COMPONENT STRUCTURE
+
+```tsx
+// ✅ GOOD: Clear hierarchy, single responsibility
+export const UserProfile = () => {
+  const [state, setState] = useState()
+  const { data } = useQuery()
+
+  const handleAction = () => {
+    /* logic */
+  }
+
+  return (
+    <Card>
+      <CardHeader>...</CardHeader>
+      <CardContent>...</CardContent>
+    </Card>
+  )
+}
+```
+
+```tsx
+// ❌ BAD: Mixed concerns, no separation
+export const UserProfile = () => {
+  const [user, setUser] = useState()
+  axios.get('/api/users') // ❌ Direct API call
+  return <div>{/* complex nested JSX */}</div>
+}
+```
+
+### 2. Service Layer Pattern
+
+**PRINCIPLE**: Decouple UI from API implementation.
+
+```typescript
+// services/auth.service.ts
+import { api } from './api'
+import type { LoginRequest, LoginResponse } from '@/types/auth'
+
+export const authService = {
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    const { data } = await api.post('/auth/login', credentials)
+    return data
+  },
+
+  async logout(): Promise<void> {
+    await api.post('/auth/logout')
+  },
+}
+```
+
+```typescript
+// services/api.ts
+import axios from 'axios'
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+  timeout: 10000,
+})
+
+// Request interceptor for auth tokens
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Handle unauthorized
+    }
+    return Promise.reject(error)
+  }
+)
+```
+
+**USAGE IN COMPONENTS**:
+
+```tsx
+// ✅ GOOD: Use service layer
+import { authService } from '@/services/auth.service'
+
+const LoginForm = () => {
+  const handleSubmit = async (credentials) => {
+    try {
+      const result = await authService.login(credentials)
+      // Handle success
+    } catch (error) {
+      // Handle error
+    }
+  }
+}
+```
+
+```tsx
+// ❌ BAD: Direct axios in component
+import axios from 'axios'
+
+const LoginForm = () => {
+  const handleSubmit = async (credentials) => {
+    const result = await axios.post('/api/auth/login', credentials)
+  }
+}
+```
+
+### 3. State Management Pattern
+
+#### WHEN TO USE REDUX
+
+- Authentication state (user, token)
+- Global UI state (theme, language)
+- Cross-feature shared data
+- Complex state with multiple actions
+
+#### WHEN TO USE LOCAL STATE
+
+- Form input values
+- UI toggle states (modals, dropdowns)
+- Component-specific data
+
+```typescript
+// store/slices/authSlice.ts
+import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+
+interface AuthState {
+  user: User | null
+  token: string | null
+  isAuthenticated: boolean
+}
+
+const initialState: AuthState = {
+  user: null,
+  token: null,
+  isAuthenticated: false,
+}
+
+const authSlice = createSlice({
+  name: 'auth',
+  initialState,
+  reducers: {
+    setUser: (state, action: PayloadAction<User>) => {
+      state.user = action.payload
+      state.isAuthenticated = true
+    },
+    clearAuth: (state) => {
+      state.user = null
+      state.token = null
+      state.isAuthenticated = false
+    },
+  },
+})
+
+export const { setUser, clearAuth } = authSlice.actions
+export default authSlice.reducer
+```
+
+```typescript
+// hooks/redux.ts (Typed hooks)
+import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux'
+import type { RootState, AppDispatch } from '@/store/store'
+
+export const useAppDispatch = () => useDispatch<AppDispatch>()
+export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector
+```
+
+```tsx
+// Usage in component
+import { useAppSelector, useAppDispatch } from '@/hooks/redux'
+import { setUser } from '@/store/slices/authSlice'
+
+const UserProfile = () => {
+  const user = useAppSelector((state) => state.auth.user)
+  const dispatch = useAppDispatch()
+
+  const updateUser = (data) => {
+    dispatch(setUser(data))
+  }
+}
+```
+
+---
+
+## Design System & Component Standards
+
+**IMPORTANT**: For detailed styling rules including colors, typography, layout standards, and component specifications, refer to `.cursor/rules/styles.mdc`.
+
+This section covers **architectural patterns and usage guidelines only**.
+
+### shadcn/ui Component Usage
+
+**PRINCIPLE**: Use shadcn/ui components as base primitives, style with Tailwind classes.
+
+```tsx
+// ✅ GOOD: Use shadcn/ui components with Tailwind
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+
+const MyComponent = () => {
+  return (
+    <Card className="h-full flex flex-col bg-card shadow-md">
+      <CardHeader className="h-12 px-4 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-lg font-bold flex items-center gap-2 leading-none">
+          Title
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 min-h-0 flex flex-col gap-[3px] p-4">
+        {/* Content */}
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+```tsx
+// ❌ BAD: Don't use inline styles or hardcoded colors
+<Card style={{ backgroundColor: '#292929', height: '100%' }}>
+  <CardHeader style={{ padding: '16px' }}>
+    <CardTitle>Title</CardTitle>
+  </CardHeader>
+</Card>
+```
+
+### Theme Tokens (Tailwind CSS Variables)
+
+**PRINCIPLE**: Use CSS variables defined in Tailwind config, never hardcode colors.
+
+```tsx
+// ✅ GOOD: Use Tailwind theme tokens
+<div className="bg-background text-foreground border border-border">
+  <div className="bg-card p-4">
+    <h2 className="text-lg font-bold">Title</h2>
+    <p className="text-muted-foreground">Description</p>
+  </div>
+</div>
+
+// ✅ GOOD: Use specific color classes from styles.mdc
+<div className="bg-[#f9fafb] dark:bg-[#1d1d1d] border-[#343637] dark:border-[#6b7280]">
+  Content
+</div>
+```
+
+```tsx
+// ❌ BAD: Hardcoded colors without dark mode support
+<div className="bg-[#f9fafb] border-[#343637]">Content</div>
+
+// ❌ BAD: Inline styles
+<div style={{ backgroundColor: '#f9fafb', borderColor: '#343637' }}>
+  Content
+</div>
+```
+
+### Layout Patterns
+
+Refer to `styles.mdc` for:
+
+- Page container structure (`calc(100vh - 140px)`)
+- Main card layout (header height: 48px)
+- Sub card layout (header height: 32px)
+- Gap spacing (3px standard)
+- Dialog structure
+
+### Data Table
+
+Refer to `styles.mdc` for complete DataTable specifications including:
+
+- Header/row heights (45px/35px)
+- Color scheme (light/dark modes)
+- Hover styles (CRITICAL: no font-weight changes)
+- Border rules (vertical only)
+- Tooltip implementation
+
+---
+
+## Coding Standards
+
+### TypeScript Configuration
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": false, // Gradual typing
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"] // Path alias
+    }
+  }
+}
+```
+
+### ESLint Rules
+
+```json
+{
+  "extends": ["eslint:recommended", "@typescript-eslint/recommended"],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_" } // Allow _param naming
+    ],
+    "@typescript-eslint/no-explicit-any": "warn"
+  }
+}
+```
+
+### Code Formatting
+
+```json
+// .prettierrc
+{
+  "semi": false, // No semicolons
+  "trailingComma": "es5",
+  "singleQuote": true,
+  "printWidth": 80,
+  "tabWidth": 2
+}
+```
+
+### Naming Conventions
+
+```typescript
+// ✅ GOOD
+const UserProfile = () => {} // PascalCase for components
+const [isOpen, setIsOpen] = useState() // camelCase for variables
+const API_BASE_URL = '...' // UPPER_SNAKE_CASE for constants
+const user_id = params.id // snake_case for API/DB fields
+
+// File naming
+UserProfile.tsx // PascalCase for components
+authService.ts // camelCase for services
+auth.types.ts // kebab-case for types
+```
+
+### Import Organization
+
+```typescript
+// 1. External libraries
+import React, { useState, useEffect } from 'react'
+import { Box, Card, Typography } from '@mui/material'
+
+// 2. Internal modules (path alias)
+import { Button } from '@/components/ui/button'
+import { authService } from '@/services/auth.service'
+import { useAppSelector } from '@/hooks/redux'
+
+// 3. Types
+import type { User } from '@/types/user'
+
+// 4. Relative imports (avoid if possible)
+import { LocalComponent } from './LocalComponent'
+
+// 5. Assets
+import logo from '@/assets/logo.png'
+```
+
+---
+
+## Best Practices & Anti-Patterns
+
+### DO's ✅
+
+1. **Use Service Layer**: All API calls through service functions
+2. **Type Safety**: Define types for props, state, and API responses
+3. **Error Boundaries**: Wrap components with error boundary
+4. **Loading States**: Show spinners/skeletons during async operations
+5. **Memoization**: Use `useMemo`, `useCallback` for expensive operations
+6. **Code Splitting**: Lazy load routes with `React.lazy()`
+7. **Accessibility**: Add ARIA labels, keyboard navigation
+8. **Environment Variables**: Use `.env` files, never hardcode secrets
+
+### DON'Ts ❌
+
+1. **Hardcode Colors**: Always use Tailwind theme tokens or CSS variables
+2. **Prop Drilling**: Use Context or Redux for deep state
+3. **Mutate State**: Always return new objects/arrays
+4. **Direct API Calls**: Never use axios directly in components
+5. **Any Type**: Avoid `any`, use `unknown` or specific types
+6. **console.log**: Remove before committing (use debugger)
+7. **Inline Styles**: Use Tailwind classes, not `style` prop
+8. **Hardcode URLs**: Use environment variables
+9. **Change font-weight on hover**: Causes layout shift in tables
+
+### Performance Optimization
+
+```tsx
+// ✅ GOOD: Memoize expensive calculations
+const ExpensiveComponent = ({ data }) => {
+  const processedData = useMemo(() => {
+    return data.map(item => /* expensive operation */)
+  }, [data])
+
+  const handleClick = useCallback(() => {
+    // Handler logic
+  }, [])
+
+  return <div>{/* render */}</div>
+}
+
+// ✅ GOOD: Lazy load routes
+const AdminDashboard = lazy(() => import('@/pages/Admin/Dashboard'))
+
+<Suspense fallback={<LoadingSpinner />}>
+  <Routes>
+    <Route path="/admin" element={<AdminDashboard />} />
+  </Routes>
+</Suspense>
+```
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+
+```typescript
+// __tests__/components/Button.test.tsx
+import { render, screen } from '@testing-library/react'
+import { Button } from '../Button'
+
+describe('Button', () => {
+  it('renders with correct text', () => {
+    render(<Button>Click me</Button>)
+    expect(screen.getByText('Click me')).toBeInTheDocument()
+  })
+
+  it('calls onClick handler', () => {
+    const handleClick = vi.fn()
+    render(<Button onClick={handleClick}>Click</Button>)
+    screen.getByText('Click').click()
+    expect(handleClick).toHaveBeenCalledOnce()
+  })
+})
+```
+
+### Integration Tests
+
+```typescript
+// __tests__/pages/Login.test.tsx
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Login } from '@/pages/Auth/Login'
+
+describe('Login Page', () => {
+  it('submits form with credentials', async () => {
+    const user = userEvent.setup()
+    render(<Login />)
+
+    await user.type(screen.getByLabelText('Email'), 'user@example.com')
+    await user.type(screen.getByLabelText('Password'), 'password123')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Welcome')).toBeInTheDocument()
+    })
+  })
+})
+```
+
+---
+
+## Security Checklist
+
+- [ ] Validate all user inputs (use Zod schemas)
+- [ ] Sanitize data before rendering (prevent XSS)
+- [ ] Use HTTPS for API communication
+- [ ] Store tokens in `httpOnly` cookies (not localStorage)
+- [ ] Implement CSRF protection
+- [ ] Set secure headers (via backend)
+- [ ] Implement rate limiting (via backend)
+- [ ] Never expose API keys in frontend code
+- [ ] Use environment variables for configuration
+- [ ] Implement proper error messages (no sensitive data leaks)
+
+---
+
+## Command Reference
+
+```bash
+# Development
+npm run dev              # Start dev server (port 3000)
+npm run dev:web          # Start web app only
+
+# Building
+npm run build            # Production build
+npm run preview          # Preview production build
+
+# Testing
+npm run test             # Run all tests
+npm run test:watch       # Watch mode
+npm run test:coverage    # Coverage report
+
+# Linting
+npm run lint             # Run ESLint
+npm run lint:fix         # Auto-fix issues
+
+# Type Checking
+npm run type-check       # TypeScript type checking
+```
+
+---
+
+## Critical Rules Summary
+
+### ALWAYS
+
+1. Use service layer for API calls
+2. Use Tailwind theme tokens for colors (see `styles.mdc`)
+3. Type all props and state
+4. Follow styling rules from `styles.mdc`
+5. Keep table font-weight constant on hover (no layout shift)
+6. Use `@/` path alias for imports
+7. Validate environment variables on startup
+8. Use shadcn/ui components as base primitives
+
+### NEVER
+
+1. Hardcode API URLs or secrets
+2. Use `any` type without justification
+3. Mutate state directly
+4. Call axios from components
+5. Change font-weight on table hover
+6. Commit console.log statements
+7. Skip error handling in async functions
+8. Use inline styles instead of Tailwind classes
+9. Hardcode colors without dark mode support
+
+---
+
+## Additional Resources
+
+- [React Documentation](https://react.dev)
+- [shadcn/ui Components](https://ui.shadcn.com)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+- [Radix UI Primitives](https://www.radix-ui.com)
+- [Lucide Icons](https://lucide.dev)
+- [Redux Toolkit](https://redux-toolkit.js.org/)
+- [Vite Guide](https://vitejs.dev/guide/)
+- **Project Styles**: `.cursor/rules/styles.mdc`
+
+---
+
+**VERSION**: 2.0.0  
+**LAST UPDATED**: 2024-01  
+**MAINTAINER**: Development Team  
+**TECH STACK**: React + TypeScript + shadcn/ui + Tailwind CSS

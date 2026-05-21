@@ -1,0 +1,947 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Oswald:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 210 20% 98%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 210 20% 98%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 200 3% 21%;
+    --input: 200 3% 21%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    /* Page background (Dark): #020817 */
+    --background: 222.9 84% 4.9%;
+    --foreground: 210 40% 98%;
+    /* Component surface background (Dark): #292929 */
+    --card: 0 0% 16.1%;
+    --card-foreground: 210 40% 98%;
+    /* Popover surface background (Dark): #292929 */
+    --popover: 0 0% 16.1%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 9% 46%;
+    --input: 220 9% 46%;
+    --ring: 212.7 26.8% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Month picker icon color fix (Windows/Chromium) */
+:where(.dark, body.dark-theme) input[type="month"] {
+  color-scheme: dark;
+}
+
+:where(.dark, body.dark-theme) input[type="month"]::-webkit-calendar-picker-indicator {
+  -webkit-filter: invert(1) brightness(1.2) contrast(1.1) !important;
+  filter: invert(1) brightness(1.2) contrast(1.1) !important;
+  opacity: 1 !important;
+}
+
+/* CSS Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* 전체 페이지 설정 */
+html,
+body {
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 다크 테마 스타일 - MUI 테마가 적용되도록 배경색 강제 적용 제거 */
+/* body.dark-theme와 body.light-theme 규칙은 MUI 테마로 대체됨 */
+
+/* 다크 테마에서 카드들 - MUI 테마 적용을 위해 주석 처리 */
+/* body.dark-theme .MuiCard-root,
+body.dark-theme .card,
+body.dark-theme .stat-card {
+  background-color: #2d3748 !important;
+  color: #ffffff !important;
+  border-color: #4a5568 !important;
+} */
+
+/* 라이트모드에서만 헤더를 사이드바와 동일한 어두운 색상으로 */
+body.light-theme .new-header {
+  background-color: #2D3748 !important;
+  /* 라이트모드에서만 사이드바와 동일한 배경 */
+  color: #ffffff !important;
+  border-bottom: 1px solid #4A5568 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 다크모드에서는 헤더를 어두운 색상으로 */
+body.dark-theme .new-header {
+  background-color: #1F2937 !important;
+  /* 다크모드에서는 어두운 배경 */
+  color: #F9FAFB !important;
+  border-bottom: 1px solid #374151 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 라이트모드에서 헤더 텍스트는 흰색 */
+body.light-theme .new-header .welcome-text {
+  color: #FFFFFF !important;
+}
+
+/* 다크모드에서 헤더 텍스트는 밝은 색 */
+body.dark-theme .new-header .welcome-text {
+  color: #F9FAFB !important;
+}
+
+/* 로그인 페이지의 배경을 보장하기 위해 기본 배경 설정 - MUI 테마 적용을 위해 !important 제거 */
+/* html, body, #root {
+  background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%) !important;
+} */
+
+/* MUI 컨테이너들은 투명하게 - 테마 적용을 위해 주석 처리 */
+/* .MuiBox-root, .MuiContainer-root {
+  background: transparent !important;
+} */
+
+/* 로그인 카드는 다크 배경 - MUI 테마 적용을 위해 주석 처리 */
+/* .MuiCard-root {
+  background: rgba(45, 55, 72, 0.95) !important;
+  backdrop-filter: blur(10px) !important;
+} */
+
+/* 입력 필드들은 어두운 배경 - MUI 테마 적용을 위해 주석 처리 */
+/* .MuiTextField-root .MuiOutlinedInput-root {
+  background: #4A5568 !important;
+} */
+
+/* 자동완성(autofill) 스타일 오버라이드 */
+.MuiOutlinedInput-input:-webkit-autofill,
+.MuiOutlinedInput-input:-webkit-autofill:hover,
+.MuiOutlinedInput-input:-webkit-autofill:focus,
+.MuiOutlinedInput-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #4A5568 inset !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  background-color: #4A5568 !important;
+}
+
+/* Firefox 자동완성 스타일 */
+.MuiOutlinedInput-input:-moz-autofill {
+  background-color: #4A5568 !important;
+  color: #FFFFFF !important;
+}
+
+/* 텍스트와 라벨은 배경 없음 */
+.MuiTypography-root,
+.MuiInputLabel-root,
+.MuiFormLabel-root {
+  background: transparent !important;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 드롭다운이 항상 최상단에 나오도록 */
+.user-dropdown-menu {
+  z-index: 999999 !important;
+  position: fixed !important;
+}
+
+.user-profile-container {
+  z-index: 999999 !important;
+}
+
+/* 강하고 남성적인 색상 변수 */
+:root {
+  --color-dark-950: #020617;
+  --color-dark-900: #0f172a;
+  --color-dark-800: #1e293b;
+  --color-dark-700: #334155;
+  --color-dark-600: #475569;
+  --color-dark-500: #64748b;
+  --color-dark-400: #94a3b8;
+  --color-dark-300: #cbd5e1;
+  --color-dark-200: #e2e8f0;
+  --color-dark-100: #f1f5f9;
+
+  --color-primary-900: #0c4a6e;
+  --color-primary-800: #075985;
+  --color-primary-700: #0369a1;
+  --color-primary-600: #0284c7;
+  --color-primary-500: #0ea5e9;
+  --color-primary-400: #38bdf8;
+  --color-primary-300: #7dd3fc;
+
+  --color-accent-900: #7f1d1d;
+  --color-accent-800: #991b1b;
+  --color-accent-700: #b91c1c;
+  --color-accent-600: #dc2626;
+  --color-accent-500: #ef4444;
+  --color-accent-400: #f87171;
+  --color-accent-300: #fca5a5;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  /* background: var(--color-dark-950); */
+  /* MUI 테마가 적용되도록 주석 처리 */
+  /* color: white; */
+  /* MUI 테마가 적용되도록 주석 처리 */
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 기본 유틸리티 클래스 (MUI와 함께 사용) */
+.min-h-screen {
+  min-height: 100vh;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.h-full {
+  height: 100%;
+}
+
+.flex {
+  display: flex;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.relative {
+  position: relative;
+}
+
+.absolute {
+  position: absolute;
+}
+
+/* 강하고 남성적인 컴포넌트 스타일 - 반응형 */
+.btn-primary {
+  background: linear-gradient(to right, var(--color-primary-600), var(--color-primary-700));
+  color: white;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--color-primary-800);
+  border-radius: 0;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  min-height: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .btn-primary {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    min-height: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .btn-primary {
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+  }
+}
+
+.btn-primary:hover {
+  background: linear-gradient(to right, var(--color-primary-700), var(--color-primary-800));
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: var(--color-dark-800);
+  color: white;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--color-dark-600);
+  border-radius: 0;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  min-height: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .btn-secondary {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    min-height: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .btn-secondary {
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+  }
+}
+
+.btn-secondary:hover {
+  background: var(--color-dark-700);
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+  transform: translateY(-2px);
+}
+
+.btn-danger {
+  background: linear-gradient(to right, var(--color-accent-600), var(--color-accent-700));
+  color: white;
+  font-weight: 700;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid var(--color-accent-800);
+  border-radius: 0;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+}
+
+.btn-danger:hover {
+  background: linear-gradient(to right, var(--color-accent-700), var(--color-accent-800));
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+  transform: translateY(-2px);
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-dark-900);
+  border: 2px solid var(--color-dark-700);
+  border-radius: 0;
+  color: white;
+  font-weight: 500;
+  transition: border-color 0.2s ease-in-out;
+  font-size: 0.75rem;
+  min-height: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .form-input {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    min-height: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .form-input {
+    padding: 0.875rem 1.25rem;
+    font-size: 1rem;
+  }
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-primary-500);
+}
+
+.form-input::placeholder {
+  color: var(--color-dark-400);
+}
+
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-dark-200);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.card {
+  background: var(--color-dark-900);
+  border: 2px solid var(--color-dark-700);
+  border-radius: 0;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  padding: 1.5rem;
+}
+
+.card-header {
+  border-bottom: 2px solid var(--color-dark-700);
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.header-title {
+  font-family: 'Oswald', system-ui, sans-serif;
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.header-subtitle {
+  color: var(--color-dark-400);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.alert-error {
+  background: var(--color-accent-900);
+  border: 2px solid var(--color-accent-600);
+  color: var(--color-accent-300);
+  padding: 1rem;
+  border-radius: 0;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  font-weight: 500;
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+  border-radius: 50%;
+  height: 2rem;
+  width: 2rem;
+  border: 4px solid var(--color-dark-700);
+  border-top-color: var(--color-primary-500);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 기본 색상 클래스 (MUI 테마와 함께 사용) */
+.text-white {
+  color: white;
+}
+
+/* 반응형 유틸리티 클래스 */
+
+.grid {
+  display: grid;
+}
+
+.hidden {
+  display: none;
+}
+
+.block {
+  display: block;
+}
+
+/* 기본 반응형 컨테이너 */
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container {
+    max-width: 640px;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 768px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1024px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container {
+    max-width: 1280px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .container {
+    max-width: 1536px;
+  }
+}
+
+/* Brutal Header Styles */
+.hamburger-menu-button {
+  background: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-800));
+  border: 2px solid var(--color-primary-600);
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 0.8);
+  transition: all 0.2s ease-in-out;
+}
+
+.hamburger-menu-button:hover {
+  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
+  transform: translateY(-1px);
+  box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 0.9);
+}
+
+.hamburger-menu-button:active {
+  transform: translateY(0);
+  box-shadow: 1px 1px 0px 0px rgba(0, 0, 0, 0.8);
+}
+
+/* Brutal Profile Button - Large & Round */
+.brutal-profile-button-large {
+  background: linear-gradient(135deg, var(--color-accent-600), var(--color-accent-700));
+  border: 2px solid var(--color-accent-800);
+  box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 0.8);
+  transition: all 0.2s ease-in-out;
+  border-radius: 50% !important;
+  /* 강제로 둥글게 */
+}
+
+.brutal-profile-button-large:hover {
+  background: linear-gradient(135deg, var(--color-accent-500), var(--color-accent-600));
+  transform: translateY(-2px);
+  box-shadow: 5px 5px 0px 0px rgba(0, 0, 0, 0.9);
+}
+
+.brutal-profile-button-large:active {
+  transform: translateY(0);
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 0.8);
+}
+
+/* Brutal Dropdown Card */
+.brutal-dropdown-card {
+  background: var(--color-dark-900);
+  border: 2px solid var(--color-primary-700);
+  box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 0.9);
+  animation: brutalDropdownSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 9999 !important;
+  /* 드롭다운이 모든 요소 위에 표시되도록 */
+}
+
+/* Brutal Dropdown Card - Large */
+.brutal-dropdown-card-large {
+  background: var(--color-dark-900);
+  border: 2px solid var(--color-primary-700);
+  box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 0.9);
+  animation: brutalDropdownSlideInLarge 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: top right;
+  /* 우측 상단을 기준으로 애니메이션 */
+  overflow: hidden;
+  /* 호버 시 요소가 컨테이너를 벗어나지 않도록 */
+  z-index: 9999 !important;
+  /* 드롭다운이 모든 요소 위에 표시되도록 */
+}
+
+.brutal-user-header {
+  background: linear-gradient(135deg, var(--color-primary-800), var(--color-primary-900));
+  border-bottom: 2px solid var(--color-primary-600);
+}
+
+button.brutal-menu-item {
+  transition: all 0.2s ease-in-out !important;
+  border: none !important;
+  background: transparent !important;
+  position: relative;
+  border-radius: 4px;
+  margin: 2px 4px;
+  text-decoration: none !important;
+  /* 밑줄 제거 */
+  color: var(--color-dark-100) !important;
+  /* 밝은 색상 */
+}
+
+button.brutal-menu-item:hover {
+  background: var(--color-primary-700) !important;
+  border-left: 4px solid var(--color-primary-300) !important;
+  transform: translateX(2px) scale(1.01) !important;
+  box-shadow: 2px 2px 8px rgba(59, 130, 246, 0.3) !important;
+  color: white !important;
+  /* 호버 시 흰색 */
+  text-decoration: none !important;
+  /* 호버 시에도 밑줄 없음 */
+}
+
+/* 사이드바 메뉴 호버 효과 - 드롭다운과 동일 */
+.sidebar-menu-item.brutal-menu-item:hover {
+  background: var(--color-primary-700) !important;
+  border-left: 4px solid var(--color-primary-300) !important;
+  transform: translateX(2px) scale(1.01) !important;
+  box-shadow: 2px 2px 8px rgba(59, 130, 246, 0.3) !important;
+  color: white !important;
+}
+
+/* 사이드바 메뉴 호버 시에도 아이콘 색상 변경 */
+.sidebar-menu-item.brutal-menu-item:hover svg {
+  color: white !important;
+}
+
+.brutal-menu-item:active {
+  transform: translateX(2px) scale(1.01);
+}
+
+/* 로그아웃 버튼 특별 스타일 */
+button.brutal-menu-item:last-child {
+  color: var(--color-accent-300) !important;
+  /* 로그아웃은 더 밝은 빨간색 */
+}
+
+button.brutal-menu-item:last-child:hover {
+  background: var(--color-accent-800) !important;
+  border-left: 4px solid var(--color-accent-300) !important;
+  box-shadow: 2px 2px 8px rgba(239, 68, 68, 0.3) !important;
+  color: white !important;
+  transform: translateX(2px) scale(1.01) !important;
+}
+
+@keyframes brutalDropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-100% + 44px)) translateY(-12px) scale(0.95);
+    box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 0.4);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(calc(-100% + 44px)) translateY(0) scale(1);
+    box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 0.9);
+  }
+}
+
+@keyframes brutalDropdownSlideInLarge {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+    box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 0.4);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 0.9);
+  }
+}
+
+/* 그림자 효과 유틸리티 */
+.shadow-brutal-sm {
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 0.8);
+}
+
+.shadow-brutal {
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 0.9);
+}
+
+.shadow-brutal-lg {
+  box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 0.9);
+}
+
+/* Sidebar Styles */
+.sidebar-collapsed {
+  width: 64px;
+  overflow: hidden;
+  /* 호버 시 요소가 사이드바를 벗어나지 않도록 */
+}
+
+.sidebar-expanded {
+  width: 256px;
+  overflow: hidden;
+  /* 호버 시 요소가 사이드바를 벗어나지 않도록 */
+}
+
+/* 사이드바에서 brutal-menu-item 사용 시 추가 스타일 */
+.sidebar-menu-item.brutal-menu-item {
+  border-radius: 4px;
+  margin: 2px 4px;
+  text-decoration: none !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--color-dark-100) !important;
+  /* 밝은 색상으로 통일 */
+}
+
+/* 사이드바 메뉴 아이콘도 밝은 색상으로 */
+.sidebar-menu-item.brutal-menu-item svg {
+  color: var(--color-primary-400) !important;
+}
+
+.sidebar-menu-item.brutal-menu-item.active {
+  background: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-600)) !important;
+  border-left: 4px solid var(--color-primary-300) !important;
+  color: white !important;
+  box-shadow: 2px 2px 12px rgba(59, 130, 246, 0.4) !important;
+}
+
+.sidebar-menu-item.brutal-menu-item.active svg {
+  color: white !important;
+}
+
+/* Header Styles */
+.hamburger-button {
+  transition: all 0.2s ease-in-out;
+}
+
+.hamburger-button:hover {
+  background: #f3f4f6;
+  transform: scale(1.05);
+}
+
+.hamburger-button:active {
+  transform: scale(0.95);
+}
+
+/* Animation Classes */
+.slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .sidebar-expanded {
+    width: 100%;
+    position: fixed;
+    z-index: 50;
+  }
+
+  .sidebar-collapsed {
+    width: 0;
+    overflow: hidden;
+  }
+
+  /* 모바일에서 카드 스타일 조정 */
+  .card {
+    padding: 1rem;
+    margin: 0.5rem;
+  }
+
+  /* 모바일에서 버튼 크기 조정 */
+  .btn-primary,
+  .btn-secondary {
+    min-height: 2.75rem;
+    font-size: 0.875rem;
+  }
+
+  /* 모바일에서 폼 입력 필드 조정 */
+  .form-input {
+    min-height: 2.75rem;
+    font-size: 0.875rem;
+  }
+
+  /* 모바일에서 드롭다운 위치 조정 */
+  .brutal-dropdown-card-large {
+    position: fixed;
+    right: 1rem;
+    top: 6.5rem;
+    transform: none !important;
+    width: calc(100vw - 2rem);
+    max-width: 22rem;
+    box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 0.9);
+    z-index: 9999 !important;
+    /* 모바일에서도 최상위에 표시 */
+  }
+}
+
+/* 터치 장치용 개선 */
+@media (hover: none) and (pointer: coarse) {
+  .sidebar-menu-item.brutal-menu-item:hover {
+    background: var(--color-primary-700) !important;
+    transform: none !important;
+    border-left: 2px solid var(--color-primary-300) !important;
+    box-shadow: none !important;
+    color: white !important;
+  }
+
+  .sidebar-menu-item.brutal-menu-item:hover svg {
+    color: white !important;
+  }
+
+  .hamburger-menu-button:hover {
+    background: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-800));
+    transform: none;
+    box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 0.8);
+  }
+
+  .brutal-profile-button-large:hover {
+    background: linear-gradient(135deg, var(--color-accent-600), var(--color-accent-700));
+    transform: none;
+    box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 0.8);
+  }
+
+  button.brutal-menu-item:hover {
+    background: var(--color-primary-700) !important;
+    transform: none !important;
+    border-left: 2px solid var(--color-primary-300) !important;
+    box-shadow: none !important;
+    color: white !important;
+  }
+
+  button.brutal-menu-item:last-child:hover {
+    background: var(--color-accent-800) !important;
+    border-left: 2px solid var(--color-accent-300) !important;
+    color: white !important;
+    transform: none !important;
+  }
+
+  .btn-primary:hover,
+  .btn-secondary:hover,
+  .btn-danger:hover {
+    transform: none;
+    box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  }
+}
+
+/* 태블릿 크기 조정 */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .sidebar-expanded {
+    width: 240px;
+  }
+
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* 고해상도 디스플레이 지원 */
+@media (-webkit-min-device-pixel-ratio: 2),
+(min-resolution: 192dpi) {
+
+  .header-title,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* 후광 맥박 애니메이션 - 사이드바 로고용 */
+@keyframes glowPulse {
+  0% {
+    text-shadow: 0 3px 6px rgba(255, 255, 255, 0.8), 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+
+  50% {
+    text-shadow: 0 4px 12px rgba(255, 255, 255, 1.0), 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  100% {
+    text-shadow: 0 3px 6px rgba(255, 255, 255, 0.8), 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* MUI 테마가 자동으로 적용되도록 하드코딩된 CSS 제거 */
+
+.MuiDrawer-paper .MuiList-root {
+  background-color: transparent !important;
+}
+
+.MuiDrawer-paper .MuiListItem-root {
+  background-color: transparent !important;
+}

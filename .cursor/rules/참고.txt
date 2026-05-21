@@ -1,0 +1,8 @@
+taskkill /f /im node.exe
+
+pm2 list
+pm2 restart linkhiit-api
+pm2 logs
+
+sudo nginx -t
+sudo systemctl restart nginx

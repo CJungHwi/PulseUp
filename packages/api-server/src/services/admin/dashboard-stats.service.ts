@@ -66,7 +66,7 @@ export class DashboardStatsService {
       const basicStats = await executeQuery(`
         SELECT 
           COUNT(*) as total,
-          SUM(CASE WHEN role = 'admin' THEN 1 ELSE 0 END) as admins,
+          SUM(CASE WHEN role = 'branch_admin' THEN 1 ELSE 0 END) as admins,
           SUM(CASE WHEN role = 'super_admin' THEN 1 ELSE 0 END) as superAdmins,
           SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) as users,
           SUM(CASE WHEN last_login_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) as activeLastWeek,

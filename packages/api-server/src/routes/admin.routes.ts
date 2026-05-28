@@ -4,6 +4,7 @@ import { requireAdmin, requireSuperAdmin, logAdminActivity, AdminRequest } from 
 import { UserActivityService } from '../services/admin/user-activity.service.js'
 import { DashboardStatsService } from '../services/admin/dashboard-stats.service.js'
 import { executeQuery, callProcedure } from '../lib/database.js'
+import { AuthService } from '../services/auth.service.js'
 import { DeviceService } from '../services/device.service.js'
 import { announcementFilesUpload } from '../middleware/announcement-upload.middleware.js'
 import { decodeMultipartFilename, safeAttachmentDisplayName } from '../lib/multipart-filename.js'
@@ -12,6 +13,41 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 const router = Router()
+
+const isBranchAdmin = (req: AdminRequest | any) => req.user?.role === 'branch_admin'
+
+const getRequestBranchId = (req: AdminRequest | any): string | null => {
+  const branchId = req.user?.branchId
+  return branchId == null || branchId === '' ? null : String(branchId)
+}
+
+const ensureUserInBranch = async (req: AdminRequest | any, res: any, userId: string): Promise<boolean> => {
+  if (!isBranchAdmin(req)) return true
+
+  const branchId = getRequestBranchId(req)
+  if (!branchId) {
+    res.status(400).json({
+      success: false,
+      error: '소속 지점 정보가 없습니다'
+    })
+    return false
+  }
+
+  const rows = await executeQuery(
+    'SELECT id FROM users WHERE id = ? AND branch_id = ?',
+    [userId, branchId]
+  )
+
+  if (rows.length === 0) {
+    res.status(403).json({
+      success: false,
+      error: '소속 지점 사용자만 관리할 수 있습니다'
+    })
+    return false
+  }
+
+  return true
+}
 
 // 모든 관리자 라우트에 인증 및 관리자 권한 확인 적용
 router.use(authenticateToken as any)
@@ -71,6 +107,18 @@ router.get('/users',
       if (role) {
         whereConditions.push('u.role = ?')
         params.push(role)
+      }
+
+      if (isBranchAdmin(req)) {
+        const branchId = getRequestBranchId(req)
+        if (!branchId) {
+          return res.status(400).json({
+            success: false,
+            error: '소속 지점 정보가 없습니다'
+          })
+        }
+        whereConditions.push('u.branch_id = ?')
+        params.push(branchId)
       }
 
       const whereClause = whereConditions.length > 0
@@ -148,6 +196,8 @@ router.get('/users/:id',
     try {
       const userId = req.params.id
 
+      if (!(await ensureUserInBranch(req, res, userId))) return
+
       const user = await executeQuery(`
         SELECT 
           u.id,
@@ -196,7 +246,7 @@ router.post('/users',
   logAdminActivity('CREATE_USER', 'user') as any,
   async (req: any, res) => {
     try {
-      const { userid, name, email, password = '123456', role = 'user', branchId, isApproved = true } = req.body
+      let { userid, name, email, password = '123456', role = 'user', branchId, isApproved = true } = req.body
 
       // 입력 검증
       if (!userid || !name) {
@@ -206,11 +256,31 @@ router.post('/users',
         })
       }
 
-      if (!['user', 'admin', 'super_admin'].includes(role)) {
+      if (!['user', 'branch_admin', 'super_admin'].includes(role)) {
         return res.status(400).json({
           success: false,
           error: '유효하지 않은 역할입니다'
         })
+      }
+
+      if (isBranchAdmin(req)) {
+        const scopedBranchId = getRequestBranchId(req)
+        if (!scopedBranchId) {
+          return res.status(400).json({
+            success: false,
+            error: '소속 지점 정보가 없습니다'
+          })
+        }
+
+        if (role !== 'user') {
+          return res.status(403).json({
+            success: false,
+            error: '지점관리자는 지점별 사용자만 생성할 수 있습니다'
+          })
+        }
+
+        branchId = scopedBranchId
+        isApproved = true
       }
 
       // 슈퍼 관리자 생성은 슈퍼 관리자만 가능
@@ -259,6 +329,14 @@ router.post('/users',
         [userid, name, email || null, hashedPassword, role, branchId || null, isApproved, req.user.id, true]
       )
 
+      if (isApproved) {
+        try {
+          await AuthService.createUserMenuItems(userid)
+        } catch (menuError) {
+          console.error('사용자 생성 후 기본 메뉴 등록 실패:', menuError)
+        }
+      }
+
       res.status(201).json({
         success: true,
         message: '사용자가 성공적으로 생성되었습니다',
@@ -294,6 +372,17 @@ router.patch('/users/:id',
       const userId = req.params.id
       const { userid, name, email, role, branchId } = req.body
 
+      if (!(await ensureUserInBranch(req, res, userId))) return
+
+      if (isBranchAdmin(req) && role && role !== 'user') {
+        return res.status(403).json({
+          success: false,
+          error: '지점관리자는 지점별 사용자 역할만 수정할 수 있습니다'
+        })
+      }
+
+      const effectiveBranchId = isBranchAdmin(req) ? getRequestBranchId(req) : branchId
+
       // console.log('=== 사용자 업데이트 요청 ===')
       // console.log('userId:', userId)
       // console.log('요청 데이터:', { userid, name, email, role, branchId })
@@ -307,7 +396,7 @@ router.patch('/users/:id',
           name || null,
           email || null,
           role || null,
-          branchId || null
+          effectiveBranchId || null
         ]
       )
 
@@ -357,7 +446,7 @@ router.patch('/users/:id/role',
       const userId = req.params.id
       const { role } = req.body
 
-      if (!['user', 'admin', 'super_admin'].includes(role)) {
+      if (!['user', 'branch_admin', 'super_admin'].includes(role)) {
         return res.status(400).json({
           success: false,
           error: '유효하지 않은 역할입니다'
@@ -408,8 +497,10 @@ router.patch('/users/:id/approve',
   async (req: any, res) => {
     try {
       const userId = req.params.id
-      const { approved } = req.body
+      const { approved, role, branchId } = req.body
       const approvedBy = req.user.id
+
+      if (!(await ensureUserInBranch(req, res, userId))) return
 
       if (typeof approved !== 'boolean') {
         return res.status(400).json({
@@ -419,23 +510,106 @@ router.patch('/users/:id/approve',
       }
 
       if (approved) {
-        // sp_approve_user 프로시저 호출
-        const result = await executeQuery(
-          'CALL sp_approve_user(?, ?)',
-          [userId, approvedBy]
+        const targetRows = await executeQuery(
+          'SELECT id, userid, name, email, role, branch_id, used FROM users WHERE id = ?',
+          [userId]
         )
 
-        if (result.length === 0) {
+        if (targetRows.length === 0) {
           return res.status(404).json({
             success: false,
             error: '사용자를 찾을 수 없습니다'
           })
         }
 
+        const targetUser = targetRows[0]
+        const isSuperAdmin = req.user.role === 'super_admin'
+
+        if (isBranchAdmin(req) && targetUser.role !== 'user') {
+          return res.status(403).json({
+            success: false,
+            error: '지점관리자는 일반 사용자만 승인할 수 있습니다'
+          })
+        }
+
+        const approvalRole = isSuperAdmin && role ? role : targetUser.role
+        if (!['user', 'branch_admin', 'super_admin'].includes(approvalRole)) {
+          return res.status(400).json({
+            success: false,
+            error: '유효하지 않은 역할입니다'
+          })
+        }
+
+        const normalizedBranchId = isSuperAdmin
+          ? (branchId === undefined ? targetUser.branch_id : (branchId || null))
+          : targetUser.branch_id
+
+        if (isSuperAdmin && approvalRole !== 'super_admin' && !normalizedBranchId) {
+          return res.status(400).json({
+            success: false,
+            error: '일반 사용자 또는 지점관리자로 승인하려면 소속 지점을 선택해주세요'
+          })
+        }
+
+        if (normalizedBranchId) {
+          const branchRows = await executeQuery(
+            'SELECT id FROM branches WHERE id = ?',
+            [normalizedBranchId]
+          )
+          if (branchRows.length === 0) {
+            return res.status(400).json({
+              success: false,
+              error: '존재하지 않는 지점입니다'
+            })
+          }
+        }
+
+        await executeQuery(
+          `UPDATE users
+           SET role = ?, branch_id = ?, is_approved = TRUE, approved_by = ?, approved_at = NOW()
+           WHERE id = ?`,
+          [approvalRole, normalizedBranchId, approvedBy, userId]
+        )
+
+        const updatedRows = await executeQuery(
+          `SELECT
+             u.id,
+             u.userid,
+             u.name,
+             u.email,
+             u.role,
+             u.branch_id,
+             b.name as branch_name,
+             b.region as branch_region,
+             u.is_approved as isApproved,
+             u.used as isActive,
+             u.created_at,
+             u.last_login_at
+           FROM users u
+           LEFT JOIN branches b ON u.branch_id = b.id
+           WHERE u.id = ?`,
+          [userId]
+        )
+
+        const updatedUser = updatedRows[0]
+
+        try {
+          await AuthService.createUserMenuItems(updatedUser.userid)
+        } catch (menuError) {
+          console.error('승인 후 기본 메뉴 등록 실패:', menuError)
+        }
+
         res.json({
           success: true,
           message: '사용자가 성공적으로 승인되었습니다',
-          data: result[0]?.[0]
+          data: updatedUser ? {
+            ...updatedUser,
+            branchId: updatedUser.branch_id,
+            branchName: updatedUser.branch_name,
+            branchRegion: updatedUser.branch_region,
+            createdAt: updatedUser.created_at,
+            lastLoginAt: updatedUser.last_login_at
+          } : null
         })
       } else {
         // sp_reject_user 프로시저 호출 (승인 취소)
@@ -470,6 +644,8 @@ router.patch('/users/:id/status',
     try {
       const userId = req.params.id
       const { active } = req.body
+
+      if (!(await ensureUserInBranch(req, res, userId))) return
 
       if (typeof active !== 'boolean') {
         return res.status(400).json({
@@ -524,6 +700,8 @@ router.patch('/users/:id/reset-password',
   async (req: any, res) => {
     try {
       const userId = req.params.id
+
+      if (!(await ensureUserInBranch(req, res, userId))) return
 
       // 사용자 존재 확인
       const existingUser = await executeQuery(
@@ -2171,7 +2349,7 @@ router.get(
       let filterStoreId: number | null = null
       if (req.user.role !== 'super_admin') {
         filterStoreId = req.user.branchId ? parseInt(String(req.user.branchId), 10) : null
-        if (!filterStoreId && req.user.role === 'admin') {
+        if (!filterStoreId && req.user.role === 'branch_admin') {
           filterStoreId = 1
         }
         if (filterStoreId == null || Number.isNaN(filterStoreId)) {

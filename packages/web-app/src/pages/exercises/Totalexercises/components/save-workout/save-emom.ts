@@ -1,4 +1,4 @@
-import api from '../../../../services/api'
+import api from '@/services/api'
 import { buildEmomDetailData, buildEmomPlanData } from './payload-builders'
 import { SaveParamsBase } from './save-types'
 import { calculateWorkoutTimeSummary } from './time-summary'

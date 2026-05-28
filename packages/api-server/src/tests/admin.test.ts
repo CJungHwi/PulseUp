@@ -243,7 +243,7 @@ describe('Admin Management System', () => {
     it('should update user information', async () => {
       const updateData = {
         name: '업데이트된 사용자',
-        role: 'admin'
+        role: 'branch_admin'
       }
 
       const response = await request(app)

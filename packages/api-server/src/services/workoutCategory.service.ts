@@ -1,4 +1,4 @@
-import { callProcedure } from '../lib/database.js';
+import { callProcedure, unwrapProcedureFirstRow, unwrapProcedureRows } from '../lib/database.js';
 
 function parseBoolean(val: any): boolean | null {
   if (val === undefined || val === null || val === '') return null;
@@ -144,7 +144,10 @@ export class WorkoutCategoryService {
         data.sort_order
       ]);
 
-      return result[0] as { category_id: string; status: string };
+      return unwrapProcedureFirstRow<{ category_id: string; status: string }>(result) as {
+        category_id: string
+        status: string
+      };
     } catch (error) {
       console.error('운동구분 생성 중 오류:', error);
       throw new Error('운동구분 생성에 실패했습니다');
@@ -161,7 +164,7 @@ export class WorkoutCategoryService {
         parseBoolean(query.is_active)
       ]);
 
-      return result as WorkoutCategoryResponse[];
+      return unwrapProcedureRows<WorkoutCategoryResponse>(result);
     } catch (error) {
       console.error('운동구분 목록 조회 중 오류:', error);
       throw new Error('운동구분 목록 조회에 실패했습니다');
@@ -174,7 +177,7 @@ export class WorkoutCategoryService {
   async getWorkoutCategoryById(categoryId: string): Promise<WorkoutCategoryResponse | null> {
     try {
       const result = await callProcedure('sp_get_workout_category_by_id', [categoryId]);
-      return result.length > 0 ? result[0] as WorkoutCategoryResponse : null;
+      return unwrapProcedureFirstRow<WorkoutCategoryResponse>(result);
     } catch (error) {
       console.error('운동구분 상세 조회 중 오류:', error);
       throw new Error('운동구분 상세 조회에 실패했습니다');
@@ -199,7 +202,7 @@ export class WorkoutCategoryService {
         data.sort_order
       ]);
 
-      return result[0] as { status: string };
+      return unwrapProcedureFirstRow<{ status: string }>(result) as { status: string };
     } catch (error) {
       console.error('운동구분 수정 중 오류:', error);
       throw new Error('운동구분 수정에 실패했습니다');
@@ -212,7 +215,7 @@ export class WorkoutCategoryService {
   async deleteWorkoutCategory(categoryId: string): Promise<{ status: string }> {
     try {
       const result = await callProcedure('sp_delete_workout_category', [categoryId]);
-      return result[0] as { status: string };
+      return unwrapProcedureFirstRow<{ status: string }>(result) as { status: string };
     } catch (error) {
       console.error('운동구분 삭제 중 오류:', error);
       if (error instanceof Error && error.message.includes('해당 운동구분을 사용하는 운동이 있어')) {
@@ -228,7 +231,7 @@ export class WorkoutCategoryService {
   async getMinorCategoriesByMajor(majorCategory: string): Promise<MinorCategoryResponse[]> {
     try {
       const result = await callProcedure('sp_get_minor_categories_by_major', [majorCategory]);
-      return result as MinorCategoryResponse[];
+      return unwrapProcedureRows<MinorCategoryResponse>(result);
     } catch (error) {
       console.error('대분류별 중분류 목록 조회 중 오류:', error);
       throw new Error('대분류별 중분류 목록 조회에 실패했습니다');
@@ -241,7 +244,7 @@ export class WorkoutCategoryService {
   async getWorkoutCategoryStats(): Promise<WorkoutCategoryResponse[]> {
     try {
       const result = await callProcedure('sp_get_workout_category_stats', []);
-      return result as WorkoutCategoryResponse[];
+      return unwrapProcedureRows<WorkoutCategoryResponse>(result);
     } catch (error) {
       console.error('운동구분별 운동 개수 조회 중 오류:', error);
       throw new Error('운동구분별 운동 개수 조회에 실패했습니다');
@@ -273,7 +276,10 @@ export class WorkoutCategoryService {
         data.is_active ?? true
       ]);
 
-      return result[0] as { exercise_id: string; status: string };
+      return unwrapProcedureFirstRow<{ exercise_id: string; status: string }>(result) as {
+        exercise_id: string
+        status: string
+      };
     } catch (error) {
       console.error('운동정보 생성 중 오류:', error);
       throw new Error('운동정보 생성에 실패했습니다');
@@ -296,7 +302,7 @@ export class WorkoutCategoryService {
         query.offset
       ]);
 
-      return result as ExerciseResponse[];
+      return unwrapProcedureRows<ExerciseResponse>(result);
     } catch (error) {
       console.error('운동정보 목록 조회 중 오류:', error);
       throw new Error('운동정보 목록 조회에 실패했습니다');
@@ -309,7 +315,7 @@ export class WorkoutCategoryService {
   async getExerciseById(exerciseId: string): Promise<ExerciseResponse | null> {
     try {
       const result = await callProcedure('sp_get_exercise_by_id', [exerciseId]);
-      return result.length > 0 ? result[0] as ExerciseResponse : null;
+      return unwrapProcedureFirstRow<ExerciseResponse>(result);
     } catch (error) {
       console.error('운동정보 상세 조회 중 오류:', error);
       throw new Error('운동정보 상세 조회에 실패했습니다');
@@ -345,7 +351,7 @@ export class WorkoutCategoryService {
         data.is_active !== undefined ? data.is_active : null
       ]);
 
-      return result[0] as { status: string };
+      return unwrapProcedureFirstRow<{ status: string }>(result) as { status: string };
     } catch (error) {
       console.error('운동정보 수정 중 오류:', error);
       throw new Error('운동정보 수정에 실패했습니다');
@@ -358,7 +364,7 @@ export class WorkoutCategoryService {
   async deleteExercise(exerciseId: string): Promise<{ status: string }> {
     try {
       const result = await callProcedure('sp_delete_exercise', [exerciseId]);
-      return result[0] as { status: string };
+      return unwrapProcedureFirstRow<{ status: string }>(result) as { status: string };
     } catch (error) {
       console.error('운동정보 삭제 중 오류:', error);
       throw new Error('운동정보 삭제에 실패했습니다');

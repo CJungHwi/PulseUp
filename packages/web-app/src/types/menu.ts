@@ -1,7 +1,7 @@
 // 메뉴 관련 타입 정의
 
 export type MenuType = 'page' | 'folder' | 'link' | 'divider';
-export type TargetAudience = 'all' | 'admin' | 'user' | 'branch_admin';
+export type TargetAudience = 'all' | 'super_admin' | 'user' | 'branch_admin';
 
 export interface Menu {
   id: string;
@@ -108,7 +108,7 @@ export const MENU_TYPE_LABELS: Record<MenuType, string> = {
 // 대상 사용자별 라벨
 export const TARGET_AUDIENCE_LABELS: Record<TargetAudience, string> = {
   all: '전체',
-  admin: '관리자',
+  super_admin: '슈퍼관리자',
   user: '일반 사용자',
   branch_admin: '지점 관리자'
 };

@@ -9,6 +9,7 @@ import { requireAdmin, type AdminRequest } from '../middleware/admin.middleware.
 import { validateRequest } from '../middleware/validation.middleware.js';
 import { successResponse, errorResponse } from '../utils/response.util.js';
 import { callProcedure, executeQuery, executeTransaction } from '../lib/database.js';
+import { LicenseService } from '../services/license.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -256,7 +257,13 @@ router.get('/',
       //console.log('🔍 workout-categories 요청 받음');
       const query = req.query as any;
       //console.log('🔍 [API] getWorkoutCategories 파라미터:', query);
-      const categories = await workoutCategoryService.getWorkoutCategories(query);
+      let categories = await workoutCategoryService.getWorkoutCategories(query);
+      const user = (req as AuthenticatedRequest).user;
+      if (user?.role !== 'super_admin' && user?.branchId) {
+        const licenses = await LicenseService.getActiveByBranch(user.branchId);
+        const licensedCategoryIds = new Set(licenses.map((license: any) => String(license.workout_category_id)));
+        categories = categories.filter((category: any) => licensedCategoryIds.has(String(category.id)));
+      }
       console.log('🔍 [API] workout-categories 응답:', JSON.stringify(categories, null, 2));
       res.json(successResponse(categories, '운동구분 목록을 성공적으로 조회했습니다'));
     } catch (error) {
@@ -462,7 +469,7 @@ router.post('/copy-workout',
     try {
       const { originalMasterId, newDate, newTime, userId, exerciseSequences } = req.body;
       const currentUser = (req as any).user;
-      const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+      const isAdmin = currentUser?.role === 'branch_admin' || currentUser?.role === 'super_admin';
 
       if (!originalMasterId || !newDate || !newTime || !userId || !exerciseSequences) return res.status(400).json({ success: false, error: '필수 파라미터가 누락되었습니다' });
 

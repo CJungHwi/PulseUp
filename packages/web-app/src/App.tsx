@@ -5,7 +5,7 @@
  *
  * 라우트(요약):
  * - 인증 레이아웃: `/login`, `/register`, `/forgot-password`(플레이스홀더), `/` → `/home` 리다이렉트
- * - 보호 + `MainLayout`: `/home`, `/dashboard`, `/MonthProgram`, `/DynamicStretching`, `/CoolDown`, `/Totalexercises`, `/settings`, `/workout-settings`, `/announcements`, `/mui-license`, `/admin/*`
+ * - 보호 + `MainLayout`: `/home`, `/dashboard`, `/MonthProgram`, `/DynamicStretching`, `/CoolDown`, `/Totalexercises`, `/settings`, `/workout-settings`, `/booking/calendar`, `/booking/manage`, `/account/bookings`, `/account/workout-records`, `/announcements`, `/mui-license`, `/admin/*`
  * - 독립(레이아웃 없음): `/remote-control`
  * - 인라인 플레이스홀더: `/videos`, `/playlists`, `/workouts`, `/profile`
  * - `*` 404
@@ -25,6 +25,7 @@ import { createMuiTheme } from './themes/muiTheme'
 import { AuthLayout } from './layouts/AuthLayout'
 import { MainLayout } from './layouts/MainLayout'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
+import { MenuAudienceGuard } from './components/Auth/MenuAudienceGuard'
 import { RoleBasedRedirect } from './components/Auth/RoleBasedRedirect'
 import AuthProvider from './components/Auth/AuthProvider'
 import { ThemeProvider as CustomThemeProvider, useTheme } from './contexts/ThemeContext'
@@ -46,19 +47,24 @@ import Totalexercises from './pages/exercises/Totalexercises/Totalexercises'
 // import FunctionalCircuit from './pages/exercises/FunctionalCircuit/FunctionalCircuit'
 // import CoreCarryFocus from './pages/exercises/CoreCarryFocus/CoreCarryFocus'
 // import CircuitTraining from './pages/exercises/CircuitTraining/CircuitTraining'
-import { RemoteControlPage } from './pages/RemoteControlPage'
+import { RemoteControlPage } from './pages/RemoteControl/RemoteControlPage'
 
 // Admin Pages
 import AdminDashboard from './pages/Admin/Dashboard/AdminDashboard'
 import WorkoutManager from './pages/Admin/WorkoutManager/WorkoutManager'
 import Notification from './pages/Admin/Notification/Notification'
 import Branch from './pages/Admin/Branch/Branch'
-import { UserManagement } from './pages/Admin/Users/UserManagement'
+import { UserManagement } from './pages/Admin/UserManagement/UserManagement'
 import LinkageManagementPage from './pages/Admin/LinkageManagement/LinkageManagementPage'
-import { UserHistory } from './pages/Admin/Users/UserHistory'
+import { UserHistory } from './pages/Admin/UserHistory/UserHistory'
 import MenuManager from './pages/Admin/MenuManager/MenuManager'
 import Vimeo from './pages/Admin/Vimeo/Vimeo'
+import LicenseManagement from './pages/Admin/Licenses/LicenseManagement'
 import WorkoutSettings from './pages/WorkoutSettings/WorkoutSettings'
+import ClassBookingCalendar from './pages/Booking/ClassBookingCalendar'
+import ClassBookingManagement from './pages/Booking/ClassBookingManagement'
+import MyBookings from './pages/Booking/MyBookings'
+import MemberWorkoutRecords from './pages/WorkoutRecords/MemberWorkoutRecords'
 
 // Other Pages
 import { MuiLicense } from './pages/MuiLicense/MuiLicense'
@@ -128,7 +134,9 @@ const AppContent: React.FC = () => {
               {/* 리모컨 페이지 (레이아웃 없음, 로그인 필요) */}
               <Route path="/remote-control" element={
                 <ProtectedRoute>
-                  <RemoteControlPage />
+                  <MenuAudienceGuard>
+                    <RemoteControlPage />
+                  </MenuAudienceGuard>
                 </ProtectedRoute>
               } />
 
@@ -188,6 +196,15 @@ const AppContent: React.FC = () => {
                   </Box>
                 } />
                 <Route path="settings" element={<AccountSettings />} />
+                <Route path="account" element={<AccountSettings />} />
+                <Route path="account/bookings" element={<MyBookings />} />
+                <Route path="account/workout-records" element={<MemberWorkoutRecords />} />
+                <Route path="booking/calendar" element={<ClassBookingCalendar />} />
+                <Route path="booking/manage" element={
+                  <ProtectedRoute requiredRole="branch_admin">
+                    <ClassBookingManagement />
+                  </ProtectedRoute>
+                } />
                 <Route path="workout-settings" element={<WorkoutSettings />} />
                 <Route path="profile" element={
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400, p: 2 }}>
@@ -212,48 +229,53 @@ const AppContent: React.FC = () => {
 
                 {/* 관리자 라우트 */}
                 <Route path="admin/dashboard" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="branch_admin">
                     <AdminDashboard />
                   </ProtectedRoute>
                 } />
                 <Route path="admin/usermanager" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="branch_admin">
                     <UserManagement />
                   </ProtectedRoute>
                 } />
                 <Route path="admin/linkage-management" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="branch_admin">
                     <LinkageManagementPage />
                   </ProtectedRoute>
                 } />
                 <Route path="admin/workoutmanager" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="branch_admin">
                     <WorkoutManager />
                   </ProtectedRoute>
                 } />
                 <Route path="admin/notification" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="branch_admin">
                     <Notification />
                   </ProtectedRoute>
                 } />
                 <Route path="admin/menumanager" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="super_admin">
                     <MenuManager />
                   </ProtectedRoute>
                 } />
                 <Route path="admin/branch" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="super_admin">
                     <Branch />
                   </ProtectedRoute>
                 } />
                 <Route path="admin/userhistory" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="branch_admin">
                     <UserHistory />
                   </ProtectedRoute>
                 } />
                 <Route path="admin/vimeo" element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute requiredRole="super_admin">
                     <Vimeo />
+                  </ProtectedRoute>
+                } />
+                <Route path="admin/licenses" element={
+                  <ProtectedRoute requiredRole="super_admin">
+                    <LicenseManagement />
                   </ProtectedRoute>
                 } />
               </Route>

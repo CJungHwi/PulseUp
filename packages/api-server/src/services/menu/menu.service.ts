@@ -5,6 +5,7 @@
 
 import { Pool } from 'mysql2/promise'
 import db from '../../lib/database.js'
+import { canAccessByTargetAudience } from '../../lib/menu-audience.util.js'
 
 export interface Menu {
   id: string
@@ -19,7 +20,7 @@ export interface Menu {
   is_active: boolean
   is_visible: boolean
   required_permissions: string | null
-  target_audience: 'all' | 'admin' | 'user' | 'branch_admin'
+  target_audience: 'all' | 'super_admin' | 'user' | 'branch_admin'
   level: number
   created_at: string
   updated_at: string
@@ -163,7 +164,7 @@ class MenuService {
 
         return menuTree
       } else {
-        // admin 등 다른 역할은 기존 방식 사용
+        // branch_admin/super_admin 등 다른 역할은 기존 방식 사용
         return this.getDefaultMenuTree(targetAudience)
       }
     } catch (error) {
@@ -253,7 +254,7 @@ class MenuService {
    * 관리자용 전체 메뉴 목록 조회
    * getMenuTree와 동일한 프로시저 사용 (sp_get_user_menu_tree)
    */
-  async getAllMenusAdmin(userId: string, targetAudience: string = 'admin'): Promise<MenuTreeItem[]> {
+  async getAllMenusAdmin(userId: string, targetAudience: string = 'super_admin'): Promise<MenuTreeItem[]> {
     try {
       console.info('admin menu tree request:', { userId, targetAudience })
       return await this.getMenuTree(userId, targetAudience)
@@ -297,7 +298,7 @@ class MenuService {
     url?: string
     icon?: string
     sort_order: number
-    target_audience: 'all' | 'admin' | 'user' | 'branch_admin'
+    target_audience: 'all' | 'super_admin' | 'user' | 'branch_admin'
     required_permissions?: string[]
   }): Promise<{ menu_id: string; status: string }> {
     try {
@@ -339,7 +340,7 @@ class MenuService {
       sort_order: number
       is_active: boolean
       is_visible: boolean
-      target_audience: 'all' | 'admin' | 'user' | 'branch_admin'
+      target_audience: 'all' | 'super_admin' | 'user' | 'branch_admin'
       required_permissions?: string[]
     }
   ): Promise<{ status: string }> {
@@ -558,43 +559,32 @@ class MenuService {
    */
   async canUserAccessMenu(userId: string, userRole: string, menuId: string): Promise<boolean> {
     try {
-      console.info('메뉴 접근 권한 확인:', { userId, userRole, menuId })
-
-      // 먼저 메뉴의 target_audience 확인
       const [menuResult] = await this.pool.execute(
-        'SELECT target_audience, name FROM menus WHERE id = ? AND is_active = TRUE AND is_visible = TRUE',
+        `SELECT target_audience, menu_type, name
+         FROM menus
+         WHERE id = ? AND is_active = TRUE AND is_visible = TRUE`,
         [menuId]
       )
 
       const menu = (menuResult as any[])[0]
       if (!menu) {
-        console.warn('메뉴를 찾을 수 없음:', menuId)
         return false
       }
 
-      console.info('메뉴 정보:', { name: menu.name, target_audience: menu.target_audience })
-
-      // target_audience 체크
-      if (menu.target_audience === 'all') {
-        console.info('모든 사용자 접근 가능')
-        return true
-      }
-      if (menu.target_audience === userRole) {
-        console.info('역할 일치로 접근 가능')
-        return true
-      }
-      if (userRole === 'admin' && menu.target_audience === 'user') {
-        console.info('관리자는 사용자 메뉴 접근 가능')
-        return true
-      }
-      if (userRole === 'super_admin' && ['user', 'admin'].includes(menu.target_audience)) {
-        console.info('최고관리자는 모든 메뉴 접근 가능')
-        return true
+      if (!canAccessByTargetAudience(userRole, menu.target_audience)) {
+        return false
       }
 
-      console.warn('메뉴 접근 권한 없음')
-      return false
+      if (menu.menu_type === 'page') {
+        const [permissionResult] = await this.pool.execute(
+          `SELECT is_enabled FROM user_menu_items WHERE user_id = ? AND menu_id = ? LIMIT 1`,
+          [userId, menuId]
+        )
+        const permission = (permissionResult as any[])[0]
+        return !!permission?.is_enabled
+      }
 
+      return true
     } catch (error) {
       console.error('Error checking user menu access:', error)
       return false

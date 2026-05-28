@@ -33,8 +33,6 @@ import {
   UserCog,
   ChevronRight,
   ChevronLeft,
-  Sun,
-  Moon,
   GitBranch,
   Video,
   Zap,
@@ -150,14 +148,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   onToggleCollapse
 }) => {
-  const { mode, toggleTheme } = useTheme()
+  const { mode } = useTheme()
   const dispatch = useAppDispatch()
   const { user, isAuthenticated } = useAppSelector((state) => state.auth)
   const menuTree = useAppSelector(selectMenuTree) || []
   const isMenuLoading = useAppSelector(selectMenuTreeLoading) || false
   const menuError = useAppSelector(selectMenuTreeError) || null
 
+  const SIDEBAR_FOLDER_STATE_KEY = 'sidebar:folderCollapsedIds'
+
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const raw = window.localStorage.getItem(SIDEBAR_FOLDER_STATE_KEY)
+      if (!raw) return new Set()
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? new Set<string>(parsed) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
 
   useEffect(() => {
     if (isAuthenticated && user?.role && (!menuTree || menuTree.length === 0) && !isMenuLoading) {
@@ -189,6 +200,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setExpandedItems(newExpanded)
   }
 
+  const toggleFolderCollapsed = (folderId: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) {
+        next.delete(folderId)
+      } else {
+        next.add(folderId)
+      }
+      try {
+        window.localStorage.setItem(
+          SIDEBAR_FOLDER_STATE_KEY,
+          JSON.stringify(Array.from(next))
+        )
+      } catch {
+        // storage 접근 실패 시 무시
+      }
+      return next
+    })
+  }
+
+  const sidebarLogoSrc = mode === 'dark'
+    ? '/pulse-sidebar-logo-dark.png'
+    : '/pulse-sidebar-logo-light.png'
+
   // 공통 메뉴 아이템 스타일
   const menuItemClass = cn(
     "flex items-center w-full p-2 rounded-md text-sm font-medium transition-colors h-10",
@@ -215,17 +250,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     if (menuItem.menu_type === 'folder') {
       if (isCollapsed) {
-        // 접힌 상태에서는 폴더를 표시하지 않음
+        // 접힌 상태(사이드바 축소)에서는 폴더 헤더 없이 자식만 표시
         return menuItem.children?.map(child => renderTreeItem(child, depth))
       }
 
+      const isFolderOpen = !collapsedFolders.has(menuItem.id)
+
       return (
-        <div key={menuItem.id}>
-          <div className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-white uppercase tracking-wider">
-            {menuItem.name}
-          </div>
-          {menuItem.children?.map(child => renderTreeItem(child, depth + 1))}
-        </div>
+        <Collapsible
+          key={menuItem.id}
+          open={isFolderOpen}
+          onOpenChange={() => toggleFolderCollapsed(menuItem.id)}
+        >
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              aria-label={`${menuItem.name} ${isFolderOpen ? '접기' : '펼치기'}`}
+              aria-expanded={isFolderOpen}
+              className={cn(
+                "flex items-center justify-between w-full px-3 py-2 rounded-md",
+                "text-xs font-semibold uppercase tracking-wider",
+                "text-gray-500 dark:text-white",
+                "hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              )}
+            >
+              <span className="truncate">{menuItem.name}</span>
+              <ChevronRight
+                className={cn(
+                  "h-4 w-4 flex-shrink-0 transition-transform",
+                  isFolderOpen && "rotate-90"
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-1">
+            {menuItem.children?.map(child => renderTreeItem(child, depth + 1))}
+          </CollapsibleContent>
+        </Collapsible>
       )
     }
 
@@ -377,12 +438,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </Button>
           )}
 
-          {/* 브랜드 텍스트 */}
+          {/* 브랜드 로고 */}
           {!isCollapsed && (
             <img
-              src="/logo.png"
-              alt="LINKHIIT"
-              className="max-w-[120px] h-auto object-contain"
+              src={sidebarLogoSrc}
+              alt="PULSE"
+              className="max-w-[150px] h-auto object-contain"
             />
           )}
         </div>
@@ -418,36 +479,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </ScrollArea>
 
       <div className={cn("p-2 border-t border-border flex-shrink-0 flex flex-col", isCollapsed ? "gap-4" : "gap-1")}>
-        {/* 테마 토글 */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={toggleTheme}
-                className={cn(
-                  menuItemClass,
-                  isCollapsed && "justify-center px-2"
-                )}
-                style={{ paddingLeft: isCollapsed ? undefined : '12px' }}
-              >
-                <div className={cn("flex items-center gap-3 overflow-hidden w-full", isCollapsed && "justify-center")}>
-                  {mode === 'dark' ? (
-                    <Sun className="h-5 w-5 flex-shrink-0" />
-                  ) : (
-                    <Moon className="h-5 w-5 flex-shrink-0" />
-                  )}
-                  {!isCollapsed && <span className="truncate text-sm">{mode === 'dark' ? '라이트 모드' : '다크 모드'}</span>}
-                </div>
-              </button>
-            </TooltipTrigger>
-            {isCollapsed && (
-              <TooltipContent side="right">
-                {mode === 'dark' ? '라이트 모드로 변경' : '다크 모드로 변경'}
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-
         {/* MUI 라이선스 링크 */}
         {/* <TooltipProvider>
           <Tooltip>

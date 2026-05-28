@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/hooks/redux'
-import { WorkoutMaster } from '../types'
+import { WorkoutMaster } from './types'
 
 interface WorkoutHistoryProps {
     selectedDate: Dayjs | null
@@ -62,7 +62,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
     width
 }) => {
     const { user } = useAppSelector((state) => state.auth)
-    const isUserAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+    const isUserAdmin = user?.role === 'branch_admin' || user?.role === 'super_admin'
     const [exerciseType, setExerciseType] = useState('전체')
     const [searchCircuitType, setSearchCircuitType] = useState('전체')
     const [recordTabValue, setRecordTabValue] = useState(isUserAdmin ? 1 : 0)

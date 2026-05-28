@@ -7,16 +7,19 @@ import * as os from 'os'
 import { IPCHandlers } from './ipc-handlers.js'
 import { CertUtils } from './cert-utils.js'
 import { fileLogger } from './file-logger.js'
+import { LicenseGate } from './license-gate.js'
 
 export class ElectronHTTPServer {
   private server: https.Server | http.Server
   private port: number
   private ipcHandlers: IPCHandlers
   private useHttps: boolean = true
+  private licenseGate: LicenseGate | null
 
-  constructor(ipcHandlers: IPCHandlers, port: number = 3002) {
+  constructor(ipcHandlers: IPCHandlers, port: number = 3002, licenseGate: LicenseGate | null = null) {
     this.ipcHandlers = ipcHandlers
     this.port = port
+    this.licenseGate = licenseGate
 
     // HTTPS 인증서 설치를 건너뛰고 HTTP만 사용
     // 서버 중계 모드에서는 외부 연결이 WebSocket을 통해 이루어지므로 HTTPS 불필요
@@ -34,6 +37,11 @@ export class ElectronHTTPServer {
     }
 
     this.server = this.createServer()
+  }
+
+  private async assertLicenseForPlayback() {
+    if (!this.licenseGate) return
+    await this.licenseGate.assertCanPlay()
   }
 
   /**
@@ -506,6 +514,8 @@ export class ElectronHTTPServer {
 
       fileLogger.beginWorkoutLogSession({ masterId, userId })
 
+      await this.assertLicenseForPlayback()
+
       // IPC 핸들러를 통해 운동 플레이 처리
       const result = await this.ipcHandlers.handleWorkoutPlay({
         ...body,
@@ -538,6 +548,8 @@ export class ElectronHTTPServer {
       // 기존 세션 재시작 케이스에서는 /config 없이 /play-start만 호출될 수 있으므로
       // 모든 요청에서 헤더 기반 런타임 설정을 주입한다.
       this.applyRuntimeConfigFromHeaders(req)
+
+      await this.assertLicenseForPlayback()
 
       // IPC 핸들러를 통해 운동 시작 처리 (대기 -> 진행)
       const result = await this.ipcHandlers.handlePlayStart()

@@ -51,7 +51,7 @@ const WorkoutSettings: React.FC = () => {
   const leftFileInputRef = useRef<HTMLInputElement>(null)
   const rightFileInputRef = useRef<HTMLInputElement>(null)
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+  const isAdmin = user?.role === 'branch_admin' || user?.role === 'super_admin'
   const [systemLeftImageUrl, setSystemLeftImageUrl] = useState('')
   const [systemRightImageUrl, setSystemRightImageUrl] = useState('')
   const [isSavingSystemImages, setIsSavingSystemImages] = useState(false)

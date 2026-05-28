@@ -15,7 +15,7 @@ export interface Menu {
   is_active: boolean
   is_visible: boolean
   required_permissions: string[] | null
-  target_audience: 'all' | 'admin' | 'user' | 'branch_admin'
+  target_audience: 'all' | 'super_admin' | 'user' | 'branch_admin'
   level: number
   created_at: string
   updated_at: string
@@ -36,7 +36,7 @@ export interface MenuTreeItem {
   is_active: boolean
   is_visible: boolean
   required_permissions: string[] | null
-  target_audience: 'all' | 'admin' | 'user' | 'branch_admin'
+  target_audience: 'all' | 'super_admin' | 'user' | 'branch_admin'
   level: number
   created_at: string
   updated_at: string

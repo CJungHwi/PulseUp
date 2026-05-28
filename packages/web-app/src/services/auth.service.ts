@@ -10,7 +10,6 @@ export interface RegisterRequest {
   email: string | null
   name: string
   password: string
-  role: 'user' | 'admin' // | 'super_admin'
   branchId?: string | null
 }
 
@@ -19,7 +18,7 @@ interface User {
   userid: string
   email: string
   name: string
-  role: 'user' | 'admin' // | 'super_admin'
+  role: 'user' | 'branch_admin' | 'super_admin'
   branchId?: string
   branchName?: string
   linkageEnabled?: boolean

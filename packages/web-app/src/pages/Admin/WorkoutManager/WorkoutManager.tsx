@@ -7,7 +7,7 @@
  * - Redux `workoutCategorySlice`: `fetchWorkoutCategories`, `fetchWorkoutMajorCategories`, `getExercisesList`, `createExercise`, `updateExercise`
  * - DB/SP는 `packages/api-server` `workout-categories` 관련 라우트 참조.
  *
- * 관련 컴포넌트: `ExerciseList`, `ExerciseForm`, `VimeoPlayerSection`.
+ * 관련 컴포넌트(`./components/`): `ExerciseList`, `ExerciseForm`, `VimeoPlayerSection`.
  *
  * 흐름: 카테고리 로드 → 검색·페이지네이션으로 목록 → 폼에서 생성/수정 dispatch.
  */
@@ -23,9 +23,9 @@ import {
   updateExercise,
 } from '../../../store/slices/workoutCategorySlice'
 import { Exercise, CreateExerciseRequest, ExerciseLevel, UpdateExerciseRequest } from '../../../types/workoutCategory'
-import { ExerciseList } from './ExerciseList'
-import { ExerciseForm } from './ExerciseForm'
-import { VimeoPlayerSection } from './VimeoPlayerSection'
+import { ExerciseList } from './components/ExerciseList'
+import { ExerciseForm } from './components/ExerciseForm'
+import { VimeoPlayerSection } from './components/VimeoPlayerSection'
 
 interface VideoInfo {
   url: string

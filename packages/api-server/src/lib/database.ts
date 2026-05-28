@@ -35,6 +35,26 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
+/** CALL 결과에서 SELECT 행 배열 추출 (mysql2: [[rows], ResultSetHeader, ...]) */
+export function unwrapProcedureRows<T = unknown>(result: unknown): T[] {
+  if (!Array.isArray(result) || result.length === 0) return []
+
+  const first = result[0]
+  if (Array.isArray(first)) return first as T[]
+
+  const isRowObject = (item: unknown) =>
+    item != null && typeof item === 'object' && !Array.isArray(item) && !('fieldCount' in item)
+
+  if (result.every(isRowObject)) return result as T[]
+
+  return isRowObject(first) ? [first as T] : []
+}
+
+export function unwrapProcedureFirstRow<T = unknown>(result: unknown): T | null {
+  const rows = unwrapProcedureRows<T>(result)
+  return rows.length > 0 ? rows[0] : null
+}
+
 // 저장 프로시저 실행 헬퍼 함수
 export async function callProcedure(
   procedureName: string,

@@ -3,7 +3,7 @@ export interface UserInfo {
   userid?: string;
   email: string;
   name: string;
-  role: 'admin' | 'user' | 'super_admin';
+  role: 'branch_admin' | 'user' | 'super_admin';
   status: 'active' | 'inactive' | 'pending';
   isApproved?: boolean;
   isActive?: boolean;
@@ -23,13 +23,13 @@ export interface CreateUserRequest {
   email: string;
   name: string;
   password: string;
-  role?: 'admin' | 'user';
+  role?: 'branch_admin' | 'user' | 'super_admin';
 }
 
 export interface UpdateUserRequest {
   name?: string;
   email?: string;
-  role?: 'admin' | 'user';
+  role?: 'branch_admin' | 'user' | 'super_admin';
 }
 
 export interface UpdateUserStatusRequest {
@@ -40,6 +40,6 @@ export interface FetchUsersQuery {
   page?: number;
   limit?: number;
   search?: string;
-  role?: 'admin' | 'user';
+  role?: 'branch_admin' | 'user' | 'super_admin';
   status?: 'active' | 'inactive' | 'pending';
 }

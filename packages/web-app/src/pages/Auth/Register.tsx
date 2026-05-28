@@ -1,62 +1,130 @@
 ﻿/**
  * 페이지 요약 — 회원가입 (`/register`)
  *
- * 기능: 일반 사용자 계정 생성 폼(필수 필드·비밀번호 확인).
+ * 기능: 지점 선택 여부에 따른 가입 유형 결정, 아이디 중복확인, 계정 생성 폼.
  *
  * 호출/연동:
  * - `authService.register` → `POST /auth/register` (`services/auth.service.ts`).
+ * - `branchApi.getBranches` → 가입 지점 목록 조회.
  *
- * 관련 컴포넌트: shadcn `Card`/`Input`/`Button`/`Alert`.
+ * 관련 컴포넌트(`./components/`):
+ * - `AuthPageShell`: 인증 화면 공통 레이아웃/브랜드 영역
+ * - `RegisterForm`: 회원가입 입력 폼
  *
- * 흐름: 검증 → 등록 API → 성공 시 `/login`으로 이동(메시지 state).
+ * 흐름: 지점 조회 → 검증 → 지점 미선택 시 지점관리자 가입 확인 → 등록 API → 성공 시 `/login`으로 이동.
  */
 
-import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { authService, RegisterRequest } from '../../services/auth.service'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Label } from '@/components/ui/label'
-import {
-  User,
-  Mail,
-  Lock,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  ArrowLeft
-} from 'lucide-react'
+import { branchApi } from '../../services/branchApi'
+import type { Branch } from '../../types/branch'
+import { AuthPageShell } from './components/AuthPageShell'
+import { RegisterForm, type RegisterFormState } from './components/RegisterForm'
+
+const createInitialRegisterForm = (): RegisterFormState => ({
+  userid: '',
+  name: '',
+  email: '',
+  branchId: '',
+  password: '',
+  confirmPassword: '',
+})
 
 export const Register: React.FC = () => {
   const navigate = useNavigate()
-  const [formData, setFormData] = useState({
-    userid: '',
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
-  })
+  const [formData, setFormData] = useState<RegisterFormState>(createInitialRegisterForm)
   const [loading, setLoading] = useState(false)
+  const [checkingUserId, setCheckingUserId] = useState(false)
+  const [checkedUserId, setCheckedUserId] = useState('')
+  const [isUserIdAvailable, setIsUserIdAvailable] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [branchesLoading, setBranchesLoading] = useState(true)
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+  useEffect(() => {
+    const loadBranches = async () => {
+      try {
+        const response = await branchApi.getBranches()
+        setBranches(response.data?.items || [])
+      } catch {
+        setBranches([])
+        setError('지점 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+      } finally {
+        setBranchesLoading(false)
+      }
+    }
+
+    loadBranches()
+  }, [])
+
+  const handleRegisterFieldChange = (field: keyof RegisterFormState, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+
+    if (field === 'userid') {
+      setCheckedUserId('')
+      setIsUserIdAvailable(null)
+    }
     if (error) setError(null)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleCheckUserIdDuplicate = async () => {
+    const userid = formData.userid.trim()
+    if (userid.length < 6) {
+      setError('아이디는 최소 6자 이상이어야 합니다.')
+      return
+    }
 
-    if (!formData.userid || !formData.name || !formData.password) {
-      setError('필수 항목을 입력해주세요.')
+    try {
+      setCheckingUserId(true)
+      setError(null)
+      const exists = await authService.checkUserIdDuplicate(userid)
+      setCheckedUserId(userid)
+      setIsUserIdAvailable(!exists)
+
+      if (exists) {
+        setError('이미 사용 중인 아이디입니다.')
+        setFormData((prev) => ({ ...prev, userid: '' }))
+        setCheckedUserId('')
+        setIsUserIdAvailable(null)
+      }
+    } catch {
+      setError('아이디 중복 확인에 실패했습니다.')
+      setCheckedUserId('')
+      setIsUserIdAvailable(null)
+    } finally {
+      setCheckingUserId(false)
+    }
+  }
+
+  const getMissingRequiredMessage = () => {
+    if (!formData.userid.trim()) return '아이디를 입력해주세요.'
+    if (checkedUserId !== formData.userid.trim() || isUserIdAvailable !== true) {
+      return '아이디 중복 확인을 완료해주세요.'
+    }
+    if (!formData.name.trim()) return '이름을 입력해주세요.'
+    if (!formData.password) return '비밀번호를 입력해주세요.'
+    if (!formData.confirmPassword) return '비밀번호 확인을 입력해주세요.'
+    return null
+  }
+
+  const handleRegisterSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+
+    const missingMessage = getMissingRequiredMessage()
+    if (missingMessage) {
+      setError(missingMessage)
       return
     }
 
     if (formData.password !== formData.confirmPassword) {
       setError('비밀번호가 일치하지 않습니다.')
       return
+    }
+
+    if (!formData.branchId) {
+      const confirmed = window.confirm('지점 선택 없이 가입하면 지점관리자 가입 신청으로 처리됩니다. 계속하시겠습니까?')
+      if (!confirmed) return
     }
 
     setLoading(true)
@@ -67,174 +135,35 @@ export const Register: React.FC = () => {
       email: formData.email.trim() || null,
       name: formData.name.trim(),
       password: formData.password,
-      role: 'user' as const,
-      branchId: null
+      branchId: formData.branchId || null,
     }
 
     try {
       await authService.register(registerData)
-      // 회원가입 성공 시 로그인 페이지로 이동 (성공 메시지는 로그인 페이지에서 처리하거나 여기서 알림)
-      navigate('/login', { state: { message: '회원가입이 완료되었습니다. 로그인해주세요.' } })
-    } catch (err: any) {
-      setError(err.response?.data?.message || '회원가입에 실패했습니다. 다시 시도해주세요.')
+      navigate('/login', { state: { message: '가입 신청이 완료되었습니다. 관리자 승인 후 로그인해주세요.' } })
+    } catch (registerError: any) {
+      setError(registerError.response?.data?.message || '회원가입에 실패했습니다. 다시 시도해주세요.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="h-screen w-full overflow-y-auto bg-background font-sans">
-      <div className="min-h-full flex flex-col items-center p-4 py-6">
-        <div className="w-full max-w-sm my-auto">
-          {/* 브랜드 영역 */}
-          <div className="text-center mb-8 animate-in fade-in duration-700">
-            <div className="flex justify-center items-center mb-3 bg-background rounded-lg p-2">
-              <img
-                src="/logo.png"
-                alt="LINKHIIT"
-                className="max-w-[200px] h-auto block"
-              />
-            </div>
-            <h1 className="text-lg text-primary font-bold tracking-widest m-0 font-brand">
-              MULTI-MONITOR WORKOUT SYSTEM
-            </h1>
-          </div>
-
-          {/* 회원가입 폼 */}
-          <Card className="w-full max-w-[420px] mx-auto shadow-md bg-card border-border animate-in slide-in-from-bottom-8 duration-500">
-            <CardHeader className="h-20 px-4 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0">
-              <div className="w-full flex flex-col items-center text-center">
-                <CardTitle className="text-2xl font-bold text-foreground tracking-tight leading-none">
-                  회원가입
-                </CardTitle>
-                <CardDescription className="mt-[10px] text-sm text-muted-foreground">
-                  새로운 계정을 생성하세요
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6 pt-4">
-              {error && (
-                <Alert variant="destructive" className="mb-6">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>
-                    {error}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="userid" className="sr-only">아이디</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="userid"
-                      placeholder="아이디"
-                      value={formData.userid}
-                      onChange={(e) => handleInputChange('userid', e.target.value)}
-                      disabled={loading}
-                      required
-                      className="pl-10 h-10 bg-card border-input focus-visible:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="sr-only">이름</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="name"
-                      placeholder="이름"
-                      value={formData.name}
-                      onChange={(e) => handleInputChange('name', e.target.value)}
-                      disabled={loading}
-                      required
-                      className="pl-10 h-10 bg-card border-input focus-visible:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="sr-only">이메일</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="이메일 (선택사항)"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                      className="pl-10 h-10 bg-card border-input focus-visible:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="sr-only">비밀번호</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="비밀번호"
-                      value={formData.password}
-                      onChange={(e) => handleInputChange('password', e.target.value)}
-                      disabled={loading}
-                      required
-                      className="pl-10 h-10 bg-card border-input focus-visible:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="sr-only">비밀번호 확인</Label>
-                  <div className="relative">
-                    <CheckCircle2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="비밀번호 확인"
-                      value={formData.confirmPassword}
-                      onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                      disabled={loading}
-                      required
-                      className="pl-10 h-10 bg-card border-input focus-visible:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <Button
-                  type="submit"
-                  className="w-full h-10 text-base font-semibold mt-2 shadow-lg hover:shadow-xl transition-all"
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      가입 중...
-                    </>
-                  ) : (
-                    '회원가입'
-                  )}
-                </Button>
-              </form>
-
-              <div className="text-center mt-6">
-                <Link
-                  to="/login"
-                  className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors"
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  로그인 페이지로 돌아가기
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+    <AuthPageShell logoMaxWidth="180px">
+      <RegisterForm
+        formData={formData}
+        branches={branches}
+        error={error}
+        loading={loading}
+        branchesLoading={branchesLoading}
+        checkingUserId={checkingUserId}
+        checkedUserId={checkedUserId}
+        isUserIdAvailable={isUserIdAvailable}
+        onInputChange={handleRegisterFieldChange}
+        onCheckDuplicate={handleCheckUserIdDuplicate}
+        onSubmit={handleRegisterSubmit}
+      />
+    </AuthPageShell>
   )
 }
 

@@ -55,7 +55,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { Exercise, PanelRow, WorkoutMaster, WorkoutTimeSummary } from '../types'
+import { Exercise, PanelRow, WorkoutMaster, WorkoutTimeSummary } from './types'
 import { VimeoFitIframe } from '../../../../components/VimeoFitIframe/VimeoFitIframe'
 
 interface WorkoutEditorProps {

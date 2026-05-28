@@ -34,6 +34,10 @@ import userDashboardRoutes from './routes/user-dashboard.routes.js'
 import bluetoothRoutes from './routes/bluetooth.routes.js'
 import heartrateRoutes from './routes/heartrate.routes.js'
 import vimeoRoutes from './routes/vimeo.routes.js'
+import classSlotsRoutes from './routes/classSlots.routes.js'
+import classBookingsRoutes from './routes/classBookings.routes.js'
+import licensesRoutes from './routes/licenses.routes.js'
+import memberWorkoutRecordsRoutes from './routes/memberWorkoutRecords.routes.js'
 
 // Load environment variables
 dotenv.config()
@@ -128,6 +132,10 @@ app.use('/api/user-dashboard', userDashboardRoutes)
 app.use('/api/bluetooth', bluetoothRoutes)
 app.use('/api/heart-rate', heartrateRoutes)
 app.use('/api/vimeo', vimeoRoutes)
+app.use('/api/class-slots', classSlotsRoutes)
+app.use('/api/class-bookings', classBookingsRoutes)
+app.use('/api/member-workout-records', memberWorkoutRecordsRoutes)
+app.use('/api', licensesRoutes)
 
 // 정적 파일 서빙 (업로드된 이미지)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))

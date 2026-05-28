@@ -118,7 +118,7 @@ describe('Admin Security Tests', () => {
       const response = await request(app)
         .put(`/api/admin/users/${regularUserId}`)
         .set('Authorization', `Bearer ${userToken}`)
-        .send({ role: 'admin' })
+        .send({ role: 'branch_admin' })
 
       expect(response.status).toBe(403)
       expect(response.body.code).toBe('ADMIN_REQUIRED')
@@ -139,7 +139,7 @@ describe('Admin Security Tests', () => {
       const sqlInjectionPayloads = [
         "'; DROP TABLE users; --",
         "' OR '1'='1",
-        "'; UPDATE users SET role='admin' WHERE id=1; --",
+        "'; UPDATE users SET role='branch_admin' WHERE id=1; --",
         "' UNION SELECT * FROM users --",
         "'; INSERT INTO users (userid, role) VALUES ('hacker', 'admin'); --"
       ]

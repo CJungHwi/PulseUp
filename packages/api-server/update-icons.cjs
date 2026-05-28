@@ -23,7 +23,7 @@ async function updateMenuIcons() {
 
     for (const update of updates) {
       const [result] = await connection.execute(
-        `UPDATE menus SET icon = ? WHERE name = ? AND target_audience = 'admin'`,
+        `UPDATE menus SET icon = ? WHERE name = ? AND target_audience = 'super_admin'`,
         [update.icon, update.name]
       );
       //console.log(`✅ ${update.name} → ${update.icon} (${result.affectedRows} rows updated)`);
@@ -31,7 +31,7 @@ async function updateMenuIcons() {
 
     // 결과 확인
     const [rows] = await connection.execute(
-      `SELECT id, name, icon, target_audience FROM menus WHERE target_audience = 'admin' ORDER BY sort_order`
+      `SELECT id, name, icon, target_audience FROM menus WHERE target_audience = 'super_admin' ORDER BY sort_order`
     );
 
     //console.log('\n📋 업데이트된 메뉴 목록:');

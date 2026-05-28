@@ -8,7 +8,7 @@
  * - `fetch` → `https://api.vimeo.com/...` (Vimeo REST)
  * - DB/SP는 `packages/api-server` Vimeo 연동 라우트 참조.
  *
- * 관련 컴포넌트: 카드·테이블·다이얼로그·엑셀 유틸(`vimeoExcelImport`/`Export`).
+ * 관련 컴포넌트(`./components/`): 카드·테이블·다이얼로그·엑셀 유틸(`vimeoExcelImport`/`Export`).
  *
  * 흐름: 토큰·필터 설정 → Vimeo/서버 API로 목록 동기 → 편집·저장.
  */
@@ -61,12 +61,12 @@ import {
 } from 'lucide-react'
 import { apiClient } from '../../../services/api.service'
 import { cn } from '../../../lib/utils'
-import { downloadVimeoVideosAsXlsx } from './vimeoExcelExport'
+import { downloadVimeoVideosAsXlsx } from './components/vimeoExcelExport'
 import {
     parseVimeoExcelSheetFromB2,
     findVideoIdByVimeoTitle,
     countVideosWithTrimmedTitle,
-} from './vimeoExcelImport'
+} from './components/vimeoExcelImport'
 
 // Vimeo 영상 타입 정의
 interface VimeoVideo {

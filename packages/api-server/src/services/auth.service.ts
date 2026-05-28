@@ -286,6 +286,12 @@ export class AuthService {
       throw new Error('사용자 생성에 실패했습니다')
     }
 
+    // 공개 회원가입은 역할과 무관하게 반드시 관리자 승인 대기 상태로 둔다.
+    await executeQuery(
+      'UPDATE users SET is_approved = FALSE, approved_by = NULL, approved_at = NULL WHERE id = ?',
+      [userId]
+    )
+
     // 일반 사용자 회원가입 시 관리자 템플릿(운동설정/기본 이미지 URL) 복사
     if (role === 'user') {
       await this.copyAdminWorkoutSettingsToUser(userId)
@@ -312,7 +318,7 @@ export class AuthService {
   }
 
   /**
-   * 가장 오래된 admin 1명의 운동 설정을 신규 사용자에게 복사
+   * 가장 오래된 branch_admin 1명의 운동 설정을 신규 사용자에게 복사
    */
   static async copyAdminWorkoutSettingsToUser(newUserId: string): Promise<void> {
     await executeTransaction([
@@ -320,14 +326,14 @@ export class AuthService {
         const [adminRows] = await connection.execute(
           `SELECT id
            FROM users
-           WHERE role = 'admin' AND used = TRUE
+           WHERE role = 'branch_admin' AND used = TRUE
            ORDER BY created_at ASC
            LIMIT 1`
         ) as any
 
         const seedAdminId = adminRows?.[0]?.id
         if (!seedAdminId) {
-          throw new Error('운동설정 템플릿 복사 실패: admin 사용자를 찾을 수 없습니다')
+          throw new Error('운동설정 템플릿 복사 실패: branch_admin 사용자를 찾을 수 없습니다')
         }
 
         await connection.execute(
@@ -357,7 +363,7 @@ export class AuthService {
   }
 
   /**
-   * 가장 오래된 admin 1명의 모니터 기본 이미지 URL을 신규 사용자에게 복사
+   * 가장 오래된 branch_admin 1명의 모니터 기본 이미지 URL을 신규 사용자에게 복사
    */
   static async copyAdminMonitorImagesToUser(newUserId: string): Promise<void> {
     await executeTransaction([
@@ -365,14 +371,14 @@ export class AuthService {
         const [adminRows] = await connection.execute(
           `SELECT id
            FROM users
-           WHERE role = 'admin' AND used = TRUE
+           WHERE role = 'branch_admin' AND used = TRUE
            ORDER BY created_at ASC
            LIMIT 1`
         ) as any
 
         const seedAdminId = adminRows?.[0]?.id
         if (!seedAdminId) {
-          throw new Error('모니터 이미지 템플릿 복사 실패: admin 사용자를 찾을 수 없습니다')
+          throw new Error('모니터 이미지 템플릿 복사 실패: branch_admin 사용자를 찾을 수 없습니다')
         }
 
         await connection.execute(
@@ -634,7 +640,7 @@ export class AuthService {
   }
 
   /**
-   * 회원가입 시 사용자별 메뉴 생성
+   * 승인(또는 관리자 생성) 시 사용자 역할 기준 기본 메뉴 권한 등록
    * sp_CreateUserMenuItems 프로시저 호출
    */
   static async createUserMenuItems(userid: string): Promise<void> {
@@ -657,8 +663,7 @@ export class AuthService {
         SELECT umi.id, umi.user_id, umi.menu_id, m.name as menu_name, m.parent_id
         FROM user_menu_items umi
         INNER JOIN menus m ON umi.menu_id = m.id
-        INNER JOIN users u ON umi.user_id = u.id
-        WHERE u.userid = ?
+        WHERE umi.user_id = ?
         ORDER BY m.sort_order
       `, [userid])
 

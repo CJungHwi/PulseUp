@@ -2,6 +2,12 @@ import { Router } from 'express'
 import { authenticateToken } from '../middleware/auth.middleware.js'
 import { callProcedure, executeQuery } from '../lib/database.js'
 import { successResponse, errorResponse } from '../utils/response.util.js'
+import {
+  canAccessByTargetAudience,
+  filterMenuTreeByTargetAudience,
+  menuMatchesAudienceCsv,
+  normalizeMenuPath,
+} from '../lib/menu-audience.util.js'
 
 const router = Router()
 
@@ -25,40 +31,26 @@ router.get('/', authenticateToken, async (req: any, res) => {
   }
 })
 
-// 메뉴 트리 구조 조회 (all -> user/admin folder -> page 재귀)
+// 메뉴 트리 구조 조회 (all -> role folder -> page 재귀)
 router.get('/tree', authenticateToken, async (req: any, res) => {
   try {
     const { target_audience } = req.query
     const userRole = req.user?.role || 'user'
     const userid = req.user?.userid
 
-    // target_audience 파라미터를 우선시하고, 없으면 사용자 역할에 따라 결정
-    let childrenAudience = 'user'
-    if (target_audience === 'admin') {
-      childrenAudience = 'admin'
-    } else if (target_audience === 'user') {
-      childrenAudience = 'user'
-    } else {
-      // target_audience가 명시되지 않은 경우에만 사용자 역할로 결정
-      if (userRole === 'admin' || userRole === 'super_admin') {
-        childrenAudience = 'admin'
-      }
-    }
-
-    //console.log('메뉴 트리 요청:', { target_audience, userRole, childrenAudience, userid })
-
-    // 모든 사용자(관리자 포함)가 user_menu_items와 조인하여 조회하도록 변경
     if (!userid) {
       return res.status(400).json(errorResponse('사용자 ID가 필요합니다'))
     }
 
-    // 관리자와 일반 사용자 모두 동일한 로직 사용 (user_menu_items 권한 확인)
-    // 1. root 메뉴들 조회 - 사용자별 (parent_id = 0)
-    // target_audience를 'all'로 고정하면 user/admin 메뉴가 안 나오므로 childrenAudience 사용
+    const childrenAudience = resolveChildrenAudience(
+      userRole,
+      typeof target_audience === 'string' ? target_audience : undefined
+    )
+
+    // 모든 역할: user_menu_items.is_enabled 반영 (super_admin은 audience=null로 전체 범위)
     const rootResults = await callProcedure('sp_GetUserMenus', [userid, childrenAudience, 0])
     const rootMenus = rootResults[0] || []
 
-    // 2. 각 root 메뉴에 대해 재귀적으로 하위 메뉴 조회 - 사용자별
     const menuTree = await Promise.all(
       rootMenus.map(async (rootMenu: any) => {
         const children = await getUserMenuChildren(rootMenu.id, childrenAudience, userid)
@@ -69,9 +61,9 @@ router.get('/tree', authenticateToken, async (req: any, res) => {
       })
     )
 
-    // 자식이 없는 빈 폴더 제거
-    const filteredMenuTree = filterEmptyFolders(menuTree)
-
+    const filteredMenuTree = filterEmptyFolders(
+      filterMenuTreeByTargetAudience(menuTree, userRole)
+    )
     res.json(successResponse(filteredMenuTree))
   } catch (error: any) {
     console.error('Get menu tree error:', error)
@@ -83,38 +75,10 @@ router.get('/tree', authenticateToken, async (req: any, res) => {
 router.get('/admin-tree', authenticateToken, async (req: any, res) => {
   try {
     const { target_audience } = req.query
-    const userRole = req.user?.role || 'user'
-
-    // target_audience 파라미터를 우선시하고, 없으면 사용자 역할에 따라 결정
-    let childrenAudience = 'user'
-    if (target_audience === 'admin') {
-      childrenAudience = 'admin'
-    } else if (target_audience === 'user') {
-      childrenAudience = 'user'
-    } else {
-      // target_audience가 명시되지 않은 경우에만 사용자 역할로 결정
-      if (userRole === 'admin' || userRole === 'super_admin') {
-        childrenAudience = 'admin'
-      }
-    }
-
-    //console.log('관리 페이지 메뉴 트리 요청:', { target_audience, userRole, childrenAudience })
-
-    // 관리 페이지에서는 항상 sp_GetMenus 사용 (user_menu_items 조인 안함)
-    // 1. root 메뉴들 (target_audience = 'all') 조회 (parent_id = 0)
-    const rootResults = await callProcedure('sp_GetMenus', ['all', 0])
-    const rootMenus = rootResults[0] || []
-
-    // 2. 각 root 메뉴에 대해 재귀적으로 하위 메뉴 조회
-    const menuTree = await Promise.all(
-      rootMenus.map(async (rootMenu: any) => {
-        const children = await getMenuChildren(rootMenu.id, childrenAudience)
-        return {
-          ...rootMenu,
-          children
-        }
-      })
+    const childrenAudience = resolveAdminTreeAudience(
+      typeof target_audience === 'string' ? target_audience : undefined
     )
+    const menuTree = await buildAdminMenuTree(childrenAudience)
     res.json(successResponse(menuTree))
   } catch (error: any) {
     console.error('Get admin menu tree error:', error)
@@ -122,25 +86,134 @@ router.get('/admin-tree', authenticateToken, async (req: any, res) => {
   }
 })
 
-// 재귀적으로 하위 메뉴 조회 (관리자용)
-async function getMenuChildren(parentId: number, targetAudience: string): Promise<any[]> {
+// 경로 기반 메뉴 접근 권한 확인 (target_audience + user_menu_items.is_enabled)
+router.get('/access-by-path', authenticateToken, async (req: any, res) => {
+  try {
+    const rawPath = typeof req.query.path === 'string' ? req.query.path : ''
+    const path = normalizeMenuPath(rawPath)
+    const userRole = req.user?.role || 'user'
+    const userid = req.user?.userid
+
+    if (!path) {
+      return res.status(400).json(errorResponse('path가 필요합니다'))
+    }
+
+    const menus = await executeQuery(
+      `SELECT id, menu_type, target_audience
+       FROM menus
+       WHERE url = ? AND is_active = TRUE AND is_visible = TRUE
+       ORDER BY FIELD(target_audience, ?, 'all') DESC, sort_order ASC, id ASC`,
+      [path, userRole]
+    )
+
+    if (!menus.length) {
+      return res.json(successResponse({ registered: false, hasAccess: true }))
+    }
+
+    const menu = menus.find((item: any) => canAccessByTargetAudience(userRole, item.target_audience))
+
+    if (!menu) {
+      return res.json(successResponse({
+        registered: true,
+        hasAccess: false,
+        reason: 'target_audience',
+        target_audience: menus.map((item: any) => item.target_audience).join(','),
+      }))
+    }
+
+    if (menu.menu_type === 'page' && userid) {
+      const permissions = await executeQuery(
+        `SELECT is_enabled
+         FROM user_menu_items
+         WHERE user_id = ? AND menu_id = ?
+         LIMIT 1`,
+        [userid, menu.id]
+      )
+
+      if (!permissions.length || !permissions[0].is_enabled) {
+        return res.json(successResponse({
+          registered: true,
+          hasAccess: false,
+          reason: 'menu_permission',
+          target_audience: menu.target_audience,
+        }))
+      }
+    }
+
+    return res.json(successResponse({
+      registered: true,
+      hasAccess: true,
+      target_audience: menu.target_audience,
+    }))
+  } catch (error) {
+    console.error('access-by-path error:', error)
+    res.status(500).json(errorResponse('메뉴 접근 권한 확인에 실패했습니다'))
+  }
+})
+
+// 메뉴 ID 기반 접근 권한 확인
+router.get('/:menuId/access', authenticateToken, async (req: any, res) => {
+  try {
+    const menuId = parseInt(req.params.menuId, 10)
+    const userRole = req.user?.role || 'user'
+    const userid = req.user?.userid
+
+    if (Number.isNaN(menuId)) {
+      return res.status(400).json(errorResponse('유효하지 않은 menuId입니다'))
+    }
+
+    const menus = await executeQuery(
+      `SELECT id, menu_type, target_audience
+       FROM menus
+       WHERE id = ? AND is_active = TRUE AND is_visible = TRUE
+       LIMIT 1`,
+      [menuId]
+    )
+
+    if (!menus.length) {
+      return res.json(successResponse({ hasAccess: false }))
+    }
+
+    const menu = menus[0]
+
+    if (!canAccessByTargetAudience(userRole, menu.target_audience)) {
+      return res.json(successResponse({ hasAccess: false, reason: 'target_audience' }))
+    }
+
+    if (menu.menu_type === 'page' && userid) {
+      const permissions = await executeQuery(
+        `SELECT is_enabled FROM user_menu_items WHERE user_id = ? AND menu_id = ? LIMIT 1`,
+        [userid, menu.id]
+      )
+      const hasAccess = permissions.length > 0 && !!permissions[0].is_enabled
+      return res.json(successResponse({ hasAccess }))
+    }
+
+    return res.json(successResponse({ hasAccess: true }))
+  } catch (error) {
+    console.error('menu access check error:', error)
+    res.status(500).json(errorResponse('메뉴 접근 권한 확인에 실패했습니다'))
+  }
+})
+
+// 재귀적으로 하위 메뉴 조회 (관리자용 — folder/page 모두 target_audience strict 필터)
+async function getMenuChildren(parentId: number, targetAudience: string | null): Promise<any[]> {
   try {
     const results = await callProcedure('sp_GetMenus', [targetAudience, parentId])
-    const children = results[0] || []
+    const children = (results[0] || []).filter(
+      (child: any) => !targetAudience || menuMatchesAudienceCsv(child.target_audience, targetAudience)
+    )
 
-    // 각 자식 메뉴에 대해 다시 재귀 호출
     return await Promise.all(
       children.map(async (child: any) => {
-        let grandChildren: any[] = []
-
-        // folder 타입인 경우 page 타입의 하위 메뉴 조회
-        if (child.menu_type === 'folder') {
-          grandChildren = await getMenuChildren(child.id, targetAudience)
-        }
+        const grandChildren =
+          child.menu_type === 'folder'
+            ? await getMenuChildren(child.id, targetAudience)
+            : []
 
         return {
           ...child,
-          children: grandChildren
+          children: grandChildren,
         }
       })
     )
@@ -151,7 +224,11 @@ async function getMenuChildren(parentId: number, targetAudience: string): Promis
 }
 
 // 재귀적으로 하위 메뉴 조회 (사용자별 - user_menu_items와 조인)
-async function getUserMenuChildren(parentId: number, targetAudience: string, userid: string): Promise<any[]> {
+async function getUserMenuChildren(
+  parentId: number,
+  targetAudience: string | null,
+  userid: string
+): Promise<any[]> {
   try {
     const results = await callProcedure('sp_GetUserMenus', [userid, targetAudience, parentId])
     const children = results[0] || []
@@ -313,6 +390,64 @@ router.put('/enable-for-all/:menuId', authenticateToken, async (req, res) => {
 });
 
 export { router as menusRoutes }
+
+/** 역할/쿼리 파라미터에 따른 하위 메뉴 audience 필터 */
+function resolveChildrenAudience(userRole: string, targetAudience?: string): string | null {
+  if (targetAudience === 'all') return null
+  if (targetAudience && targetAudience.includes(',')) return targetAudience.trim()
+  if (targetAudience === 'user' || targetAudience === 'branch_admin' || targetAudience === 'super_admin') {
+    return targetAudience
+  }
+  if (userRole === 'super_admin') return null
+  if (userRole === 'branch_admin') return 'user,branch_admin'
+  return 'user'
+}
+
+/** 메뉴 관리 화면 탭별 audience (누적: user → +branch_admin → +super_admin) */
+function resolveAdminTreeAudience(targetAudience?: string): string {
+  const raw = targetAudience?.trim() || 'user'
+  if (raw === 'all') {
+    return 'user,branch_admin,super_admin'
+  }
+  return raw
+}
+
+/** 메뉴 관리 페이지용 트리 — folder/page 모두 target_audience strict 필터 */
+async function buildAdminMenuTree(childrenAudience: string): Promise<any[]> {
+  const roots = await getMenusAtParentLevel(childrenAudience)
+
+  const tree = await Promise.all(
+    roots.map(async (menu: any) => {
+      const children =
+        menu.menu_type === 'folder'
+          ? await getMenuChildren(menu.id, childrenAudience)
+          : []
+
+      return { ...menu, children }
+    })
+  )
+
+  return sortMenusByOrder(filterEmptyFolders(tree))
+}
+
+async function getMenusAtParentLevel(childrenAudience: string): Promise<any[]> {
+  const nullRootResults = await callProcedure('sp_GetMenus', [childrenAudience, null])
+  const zeroRootResults = await callProcedure('sp_GetMenus', [childrenAudience, '0'])
+  const seenIds = new Set<number>()
+
+  return [...(nullRootResults[0] || []), ...(zeroRootResults[0] || [])].filter((menu: any) => {
+    if (seenIds.has(menu.id)) return false
+    seenIds.add(menu.id)
+    return menuMatchesAudienceCsv(menu.target_audience, childrenAudience)
+  })
+}
+
+function sortMenusByOrder(menus: any[]): any[] {
+  return [...menus].sort(
+    (a, b) =>
+      (a.order_index ?? a.sort_order ?? 0) - (b.order_index ?? b.sort_order ?? 0)
+  )
+}
 
 // 빈 폴더 제거 헬퍼 함수
 function filterEmptyFolders(menus: any[]): any[] {

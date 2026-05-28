@@ -14,7 +14,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Edit, Image as ImageIcon, Save, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { WorkoutCategory, WorkoutMajorCategory } from '../../../types/workoutCategory'
+import { WorkoutCategory, WorkoutMajorCategory } from '@/types/workoutCategory'
 
 interface ExerciseFormProps {
     formData: any

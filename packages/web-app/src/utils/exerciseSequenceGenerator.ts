@@ -1,11 +1,11 @@
 // 운동 실행 순서 생성 유틸리티
 
-import { buildAmrapExerciseGroups } from '../pages/exercises/Totalexercises/amrapGroupBuilders'
+import { buildAmrapExerciseGroups } from '../pages/exercises/Totalexercises/components/amrapGroupBuilders'
 import {
   generateWorkoutExercises,
   sortExercisesForExecution,
-} from '../pages/exercises/Totalexercises/save-workout/workout-exercise-helpers'
-import type { Exercise as TotExercise, PanelRow as TotPanelRow } from '../pages/exercises/Totalexercises/types'
+} from '../pages/exercises/Totalexercises/components/save-workout/workout-exercise-helpers'
+import type { Exercise as TotExercise, PanelRow as TotPanelRow } from '../pages/exercises/Totalexercises/components/types'
 
 // 운동 정보 타입
 export interface Exercise {

@@ -30,8 +30,8 @@ import ExerciseSelectionModal from '../../../components/ExerciseSelectionModal/E
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // Types & Logic
-import { Exercise, PanelRow, WorkoutMaster, WorkoutTimeSummary } from './types'
-import { saveCircuit, saveAMRAP, saveEMOM, getMainCircuitTotalSecondsFromPanels, getEmomTimeBreakdownFromPanels } from './saveWorkout'
+import { Exercise, PanelRow, WorkoutMaster, WorkoutTimeSummary } from './components/types'
+import { saveCircuit, saveAMRAP, saveEMOM, getMainCircuitTotalSecondsFromPanels, getEmomTimeBreakdownFromPanels } from './components/saveWorkout'
 
 const resolveWorkoutSaveErrorMessage = (error: unknown): string => {
   if (isAxiosError(error)) {
@@ -58,7 +58,7 @@ const resolveWorkoutSaveErrorMessage = (error: unknown): string => {
 export default function Totalexercises() {
   const { showSnackbar } = useSnackbar()
   const { user } = useAppSelector((state) => state.auth)
-  const isUserAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+  const isUserAdmin = user?.role === 'branch_admin' || user?.role === 'super_admin'
   
   const toast = useMemo(() => {
     return {

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // 메뉴 유형 및 대상 사용자 enum
 export const MenuType = z.enum(['page', 'folder', 'link', 'divider']);
-export const TargetAudience = z.enum(['all', 'admin', 'user', 'branch_admin']);
+export const TargetAudience = z.enum(['all', 'super_admin', 'user', 'branch_admin']);
 
 // 메뉴 생성 스키마
 export const createMenuSchema = z.object({

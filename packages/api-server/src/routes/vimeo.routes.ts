@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { VimeoService, VimeoVideoData } from '../services/vimeo.service.js'
 import { authenticateToken } from '../middleware/auth.middleware.js'
-import { requireAdmin } from '../middleware/admin.middleware.js'
+import { requireSuperAdmin } from '../middleware/admin.middleware.js'
 
 const router = Router()
 
@@ -24,7 +24,7 @@ const isEligibleVimeoSyncParentFolder = (raw: string | undefined | null): boolea
  * POST /api/vimeo/sync
  * Vimeo 영상 정보 저장
  */
-router.post('/sync', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/sync', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const videoData: VimeoVideoData = req.body
 
@@ -64,7 +64,7 @@ router.post('/sync', authenticateToken, requireAdmin, async (req, res) => {
  * 여러 Vimeo 영상 일괄 저장
  * Query param: isFullSync=true 이면 전체 동기화 (삭제된 영상 비활성화)
  */
-router.post('/sync-batch', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/sync-batch', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const rawVideos: VimeoVideoData[] = req.body.videos
         const isFullSync = req.query.isFullSync === 'true' || req.body.isFullSync === true
@@ -113,7 +113,7 @@ router.post('/sync-batch', authenticateToken, requireAdmin, async (req, res) => 
  * POST /api/vimeo/match-exercises
  * exercises 테이블과 Vimeo 영상 자동 매칭 (UPDATE + INSERT)
  */
-router.post('/match-exercises', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/match-exercises', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const result = await VimeoService.matchExercisesWithVimeo()
 
@@ -135,7 +135,7 @@ router.post('/match-exercises', authenticateToken, requireAdmin, async (req, res
  * POST /api/vimeo/match-exercises-video-url
  * exercises 테이블 업데이트는 video_url(영상 ID)만 수행
  */
-router.post('/match-exercises-video-url', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/match-exercises-video-url', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const result = await VimeoService.matchExercisesWithVimeoVideoUrlOnly()
 
@@ -157,7 +157,7 @@ router.post('/match-exercises-video-url', authenticateToken, requireAdmin, async
  * PATCH /api/vimeo/videos/:videoId/description
  * 단건 영상 설명 DB 업데이트
  */
-router.patch('/videos/:videoId/description', authenticateToken, requireAdmin, async (req, res) => {
+router.patch('/videos/:videoId/description', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const { videoId } = req.params
         const { description } = req.body
@@ -176,7 +176,7 @@ router.patch('/videos/:videoId/description', authenticateToken, requireAdmin, as
  * PATCH /api/vimeo/videos/descriptions/batch
  * 다건 영상 설명 DB 일괄 업데이트
  */
-router.patch('/videos/descriptions/batch', authenticateToken, requireAdmin, async (req, res) => {
+router.patch('/videos/descriptions/batch', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const { items } = req.body
         if (!Array.isArray(items) || items.length === 0) {
@@ -194,7 +194,7 @@ router.patch('/videos/descriptions/batch', authenticateToken, requireAdmin, asyn
  * POST /api/vimeo/videos/purge-inactive
  * is_active = FALSE 인 Vimeo 행 일괄 삭제 + 연결 exercises 정리
  */
-router.post('/videos/purge-inactive', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/videos/purge-inactive', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const result = await VimeoService.deleteInactiveVimeoVideos()
         res.json({

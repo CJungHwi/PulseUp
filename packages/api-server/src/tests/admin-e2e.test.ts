@@ -78,7 +78,7 @@ describe('Admin Management System - E2E Tests', () => {
       // 4. 사용자 정보 수정
       const updateData = {
         name: '수정된 E2E 사용자',
-        role: 'admin'
+        role: 'branch_admin'
       }
 
       const updateResponse = await request(app)

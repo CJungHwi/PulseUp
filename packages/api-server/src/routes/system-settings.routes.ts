@@ -52,7 +52,7 @@ router.put('/:settingKey', authMiddleware, async (req, res, next) => {
         const user = (req as any).user
 
         // 관리자 권한 확인
-        if (user.role !== 'admin' && user.role !== 'super_admin') {
+        if (user.role !== 'branch_admin' && user.role !== 'super_admin') {
             return res.status(403).json({
                 success: false,
                 error: '권한이 없습니다'

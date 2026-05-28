@@ -27,11 +27,14 @@ export const loadMenuTree = createAsyncThunk(
   'menu/loadMenuTree',
   async (userRole: string | undefined, { rejectWithValue }) => {
     try {
-      // 사용자 역할을 target_audience로 매핑
-      const targetAudience = userRole === 'super_admin' ? 'admin' : userRole
-      const params = targetAudience ? { target_audience: targetAudience } : {}
-
-      //console.log('📡 메뉴 트리 API 요청:', { userRole, targetAudience, params })
+      const params: Record<string, string> = {}
+      if (userRole === 'super_admin') {
+        params.target_audience = 'all'
+      } else if (userRole === 'branch_admin') {
+        params.target_audience = 'user,branch_admin'
+      } else if (userRole) {
+        params.target_audience = 'user'
+      }
 
       const response = await api.get<ApiResponse<MenuTreeItem[]>>('/menus/tree', { params })
       //console.log('📡 메뉴 트리 API 응답:', response.data)

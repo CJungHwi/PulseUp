@@ -9,6 +9,7 @@ import { ElectronHTTPServer } from './http-server.js'
 import { HeartRateANTManager } from './heart-rate-modules/index.js'
 import { DeviceManager } from './device-manager.js'
 import { WebSocketRelay } from './ws-relay.js'
+import { LicenseGate } from './license-gate.js'
 import { getScreenMode, setScreenMode, type ScreenMode } from './screen-mode-store.js'
 import {
   buildWindowPlan,
@@ -69,11 +70,15 @@ class MultiMonitorWorkoutApp {
 
   constructor() {
     this.ipcHandlers = new IPCHandlers()
-    this.httpServer = new ElectronHTTPServer(this.ipcHandlers, 3002) // 포트 3002 사용
     this.screenMode = getScreenMode()
     
     // 디바이스 매니저 및 WebSocket Relay 초기화
     this.deviceManager = new DeviceManager()
+    const licenseGate = new LicenseGate({
+      getWebAppUrl: () => this.ipcHandlers.getRuntimeInfo().webAppUrl,
+      getDeviceToken: () => this.deviceManager.getDeviceToken()
+    })
+    this.httpServer = new ElectronHTTPServer(this.ipcHandlers, 3002, licenseGate) // 포트 3002 사용
     this.wsRelay = new WebSocketRelay(this.deviceManager, this.ipcHandlers)
     
     // ANT+가 필요 없는 환경에서 불필요한 동글 스캔/로그(예: GarminStick3)를 방지하기 위해 비활성화 옵션 제공

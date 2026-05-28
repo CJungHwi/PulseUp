@@ -6,6 +6,7 @@ import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.midd
 import { createUserSchema, loginSchema } from '../schemas/user.schema.js'
 import { ResponseUtil } from '../utils/response.util.js'
 import { executeQuery, callProcedure } from '../lib/database.js'
+import { PublicSignupPolicyService } from '../services/auth/publicSignupPolicy.service.js'
 
 const router = Router()
 
@@ -17,24 +18,20 @@ const refreshTokenSchema = z.object({
 // 회원가입
 router.post('/register', validateBody(createUserSchema), async (req, res, next) => {
   try {
-    const { userid, email, name, password, role, branchId } = req.body
+    const signup = await PublicSignupPolicyService.normalize(req.body)
     const ipAddress = getClientIp(req)
     const userAgent = req.headers['user-agent'] || 'unknown'
 
-    const result = await AuthService.register(userid, email, name, password, role, branchId)
+    const result = await AuthService.register(
+      signup.userid,
+      signup.email || '',
+      signup.name,
+      signup.password,
+      signup.role,
+      signup.branchId
+    )
 
-    // 회원가입 완료 후 사용자별 메뉴 생성 (role이 'user'인 경우에만)
-    if (result.user.id && result.user.role === 'user') {
-      try {
-        await AuthService.createUserMenuItems(result.user.userid)
-        //console.log('✅ 회원가입 시 사용자별 메뉴 생성 완료:', result.user.id)
-      } catch (menuError) {
-        console.error('❌ 회원가입 시 사용자별 메뉴 생성 실패:', menuError)
-        // 메뉴 생성 실패가 회원가입을 방해하지 않도록 에러를 던지지 않음
-      }
-    }
-
-    // 회원가입 시에도 로그인 이력 기록 (자동 로그인되는 경우)
+    // 기본 메뉴 권한은 관리자 승인 시 등록 (auth.routes / admin.routes approve)
     if (result.user.id) {
       await AuthService.recordLoginHistory(result.user.id, true, ipAddress, userAgent)
     }
@@ -44,11 +41,16 @@ router.post('/register', validateBody(createUserSchema), async (req, res, next) 
       accessToken: result.tokens.accessToken,
       refreshToken: result.tokens.refreshToken,
       expiresIn: result.tokens.expiresIn
-    }, '회원가입이 완료되었습니다')
+    }, '가입 신청이 완료되었습니다. 관리자 승인 후 로그인 가능합니다')
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === '이미 존재하는 아이디입니다') {
         return ResponseUtil.conflict(res, error.message)
+      }
+    }
+    if (error instanceof Error) {
+      if (error.message === '존재하지 않는 지점입니다') {
+        return ResponseUtil.badRequest(res, error.message)
       }
     }
     next(error)

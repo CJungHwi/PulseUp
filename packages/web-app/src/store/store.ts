@@ -8,6 +8,7 @@ import menuSlice from './slices/menuSlice'
 import workoutCategorySlice from './slices/workoutCategorySlice'
 import notificationSlice from './slices/notificationSlice'
 import branchSlice from './slices/branchSlice'
+import bookingSlice from './slices/bookingSlice'
 
 import themeReducer from './slices/themeSlice'
 
@@ -22,6 +23,7 @@ export const store = configureStore({
     workoutCategories: workoutCategorySlice,
     notifications: notificationSlice,
     branches: branchSlice,
+    booking: bookingSlice,
 
     theme: themeReducer,
   },

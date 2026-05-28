@@ -1,4 +1,4 @@
-import api from '../../../../services/api'
+import api from '@/services/api'
 import { calculateWorkoutTimeSummary } from './time-summary'
 import { buildCircuitDetailData, buildCircuitPlanData } from './payload-builders'
 import { SaveCircuitParams } from './save-types'

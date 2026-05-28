@@ -3,6 +3,7 @@ import { authenticateToken } from '../middleware/auth.middleware.js';
 import { validateRequest } from '../middleware/validation.middleware.js';
 import { successResponse, errorResponse } from '../utils/response.util.js';
 import { pool } from '../lib/database.js';
+import { AuthService } from '../services/auth.service.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -19,7 +20,7 @@ router.get('/stats', authenticateToken, validateRequest({ query: getDashboardSta
     const userRole = req.user?.role;
 
     // 관리자 권한 확인
-    if (!['admin', 'super_admin'].includes(userRole)) {
+    if (!['branch_admin', 'super_admin'].includes(userRole)) {
       return res.status(403).json(errorResponse('관리자 권한이 필요합니다', 'FORBIDDEN'));
     }
 
@@ -30,7 +31,7 @@ router.get('/stats', authenticateToken, validateRequest({ query: getDashboardSta
         SUM(CASE WHEN is_approved = TRUE THEN 1 ELSE 0 END) as approved_users,
         SUM(CASE WHEN is_approved = FALSE THEN 1 ELSE 0 END) as pending_users,
         SUM(CASE WHEN used = FALSE THEN 1 ELSE 0 END) as inactive_users,
-        SUM(CASE WHEN role = 'admin' AND is_approved = TRUE THEN 1 ELSE 0 END) as approved_admins,
+        SUM(CASE WHEN role = 'branch_admin' AND is_approved = TRUE THEN 1 ELSE 0 END) as approved_admins,
         SUM(CASE WHEN role = 'user' AND is_approved = TRUE THEN 1 ELSE 0 END) as approved_regular_users
       FROM users 
       WHERE used = TRUE
@@ -144,11 +145,28 @@ router.get('/pending-users', authenticateToken, async (req: any, res) => {
     const userRole = req.user?.role;
 
     // 관리자 권한 확인
-    if (!['admin', 'super_admin'].includes(userRole)) {
+    if (!['branch_admin', 'super_admin'].includes(userRole)) {
       return res.status(403).json(errorResponse('관리자 권한이 필요합니다', 'FORBIDDEN'));
     }
 
-    // 사용자 목록 조회 (role='user'만, 승인 상태 포함)
+    const whereConditions = [
+      'u.used = TRUE',
+      'u.is_approved = FALSE'
+    ];
+    const params: any[] = [];
+
+    if (userRole === 'branch_admin') {
+      if (!req.user?.branchId) {
+        return res.status(400).json(errorResponse('소속 지점 정보가 없습니다', 'BAD_REQUEST'));
+      }
+      whereConditions.push('u.role = ?');
+      whereConditions.push('u.branch_id = ?');
+      params.push('user', req.user.branchId);
+    } else {
+      whereConditions.push("u.role = 'branch_admin'");
+    }
+
+    // branch_admin은 자기 지점 일반 사용자, super_admin은 지점관리자 신청만 조회
     const [pendingUsers] = await pool.execute(`
       SELECT 
         u.id,
@@ -161,13 +179,11 @@ router.get('/pending-users', authenticateToken, async (req: any, res) => {
         COALESCE(b.name, '미지정') as branch_name
       FROM users u
       LEFT JOIN branches b ON u.branch_id = b.id
-      WHERE u.used = TRUE 
-        AND u.role = 'user'
+      WHERE ${whereConditions.join(' AND ')}
       ORDER BY 
-        u.is_approved ASC,
         u.created_at DESC
       LIMIT 10
-    `);
+    `, params);
 
     res.json(successResponse(pendingUsers, '승인 대기 사용자 목록을 성공적으로 조회했습니다'));
   } catch (error) {
@@ -218,8 +234,29 @@ router.post('/approve-user/:userId', authenticateToken, async (req: any, res) =>
     const { userId } = req.params;
 
     // 관리자 권한 확인
-    if (!['admin', 'super_admin'].includes(userRole)) {
+    if (!['branch_admin', 'super_admin'].includes(userRole)) {
       return res.status(403).json(errorResponse('관리자 권한이 필요합니다', 'FORBIDDEN'));
+    }
+
+    const [targetRows] = await pool.execute(`
+      SELECT id, userid, role, branch_id
+      FROM users
+      WHERE id = ? AND used = TRUE AND is_approved = FALSE
+    `, [userId]);
+
+    const targetUser = Array.isArray(targetRows) ? (targetRows as any[])[0] : null;
+    if (!targetUser) {
+      return res.status(404).json(errorResponse('승인 대기 사용자를 찾을 수 없습니다', 'NOT_FOUND'));
+    }
+
+    if (userRole === 'branch_admin') {
+      if (targetUser.role !== 'user' || String(targetUser.branch_id ?? '') !== String(req.user?.branchId ?? '')) {
+        return res.status(403).json(errorResponse('소속 지점 사용자만 승인할 수 있습니다', 'FORBIDDEN'));
+      }
+    }
+
+    if (userRole === 'super_admin' && targetUser.role === 'branch_admin' && !targetUser.branch_id) {
+      return res.status(400).json(errorResponse('지점관리자는 사용자 관리 화면에서 지점을 선택한 후 승인해주세요', 'BRANCH_REQUIRED'));
     }
 
     // 사용자 승인 처리
@@ -228,11 +265,17 @@ router.post('/approve-user/:userId', authenticateToken, async (req: any, res) =>
       SET is_approved = TRUE, 
           approved_by = ?, 
           approved_at = NOW() 
-      WHERE id = ? AND role = 'user' AND used = TRUE
+      WHERE id = ? AND used = TRUE
     `, [adminId, userId]);
 
     if ((result as any).affectedRows === 0) {
       return res.status(404).json(errorResponse('사용자를 찾을 수 없습니다', 'NOT_FOUND'));
+    }
+
+    try {
+      await AuthService.createUserMenuItems(targetUser.userid)
+    } catch (menuError) {
+      console.error('승인 후 기본 메뉴 등록 실패:', menuError)
     }
 
     res.json(successResponse({ userId }, '사용자가 성공적으로 승인되었습니다'));

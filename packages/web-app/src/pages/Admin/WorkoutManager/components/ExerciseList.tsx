@@ -21,7 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Loader2, Filter, X, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Exercise, WorkoutMajorCategory } from '../../../types/workoutCategory'
+import { Exercise, WorkoutMajorCategory } from '@/types/workoutCategory'
 
 interface ExerciseListProps {
     exercises: Exercise[]

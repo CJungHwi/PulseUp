@@ -8,7 +8,7 @@
  * - `notificationApi` (`services/notificationApi.ts`) — REST 목록·상세·첨부 multipart 업로드·읽음 등
  * - DB/SP는 `packages/api-server` 관리자 공지 라우트·`sp_CreateAnnouncement` / `sp_UpdateAnnouncement` 등
  *
- * 관련 컴포넌트: `DataTable`(첨부 컬럼·`announcements-page-columns`), Dialog, `AnnouncementAttachmentsField`, `useAuth`.
+ * 관련 컴포넌트(`./components/`): `DataTable`(첨부 컬럼·`announcements-page-columns`), Dialog, `AnnouncementAttachmentsField`, `useAuth`.
  *
  * 흐름: dispatch로 목록 로드 → 모달 CRUD → 저장 시 선택 파일 업로드 후 본문 JSON에 attachments 포함.
  */
@@ -69,8 +69,8 @@ import {
 } from '../../types/notification'
 import { useAuth } from '../../hooks/useAuth'
 import { notificationApi } from '../../services/notificationApi'
-import { AnnouncementAttachmentsField } from './AnnouncementAttachmentsField'
-import { buildAnnouncementsPageColumns } from './announcements-page-columns'
+import { AnnouncementAttachmentsField } from './components/AnnouncementAttachmentsField'
+import { buildAnnouncementsPageColumns } from './components/announcements-page-columns'
 
 const AnnouncementsPage: React.FC = () => {
   const dispatch = useAppDispatch()

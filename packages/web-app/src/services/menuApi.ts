@@ -10,7 +10,7 @@ export interface Menu {
   parent_id?: number
   order_index: number
   sort_order?: number
-  target_audience: 'all' | 'user' | 'admin' | 'branch_admin'
+  target_audience: 'all' | 'user' | 'super_admin' | 'branch_admin'
   menu_type: 'page' | 'folder' | 'link' | 'divider'
   is_active: boolean
   is_visible: boolean
@@ -42,7 +42,7 @@ export const menuApi = {
   // 관리자 메뉴 트리 조회 (재귀 구조)
   getAdminMenuTree: async () => {
     const response = await api.get<ApiResponse<MenuTreeItem[]>>('/menus/tree', {
-      params: { target_audience: 'admin' }
+      params: { target_audience: 'super_admin' }
     })
     return response.data
   },
@@ -58,7 +58,17 @@ export const menuApi = {
   // 메뉴 관리 페이지용 관리자 메뉴 트리 조회 (menus 테이블만 사용)
   getAdminAdminMenuTree: async () => {
     const response = await api.get<ApiResponse<MenuTreeItem[]>>('/menus/admin-tree', {
-      params: { target_audience: 'admin' }
+      params: { target_audience: 'super_admin' }
+    })
+    return response.data
+  },
+
+  // 메뉴 관리 페이지용 트리 조회 (target_audience: user | user,branch_admin | user,branch_admin,super_admin)
+  getAdminMenuTreeByAudience: async (
+    target_audience: 'user' | 'user,branch_admin' | 'user,branch_admin,super_admin'
+  ) => {
+    const response = await api.get<ApiResponse<MenuTreeItem[]>>('/menus/admin-tree', {
+      params: { target_audience }
     })
     return response.data
   },
@@ -107,7 +117,20 @@ export const menuApi = {
   enableMenuForAllUsers: async (menuId: number) => {
     const response = await api.put(`/menus/enable-for-all/${menuId}`)
     return response.data
-  }
+  },
+
+  // 경로 기반 메뉴 접근 권한 확인
+  checkAccessByPath: async (path: string) => {
+    const response = await api.get<
+      ApiResponse<{
+        registered: boolean
+        hasAccess: boolean
+        reason?: 'target_audience' | 'menu_permission'
+        target_audience?: string
+      }>
+    >('/menus/access-by-path', { params: { path } })
+    return response.data
+  },
 }
 
 // 사용자 메뉴 권한 인터페이스
@@ -119,4 +142,5 @@ export interface UserMenuItem {
   menu_path: string;
   is_enabled: boolean;
   menu_type: string;
+  sort_order?: number;
 }

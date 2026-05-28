@@ -59,7 +59,7 @@ export interface User {
   userid: string
   name: string
   email?: string
-  role: 'user' | 'admin' | 'super_admin'
+  role: 'user' | 'branch_admin' | 'super_admin'
   branchId?: string
   branchName?: string
   branchRegion?: string
@@ -186,7 +186,7 @@ class AdminService {
     userid: string
     name: string
     email?: string | null
-    role: 'user' | 'admin' | 'super_admin'
+    role: 'user' | 'branch_admin' | 'super_admin'
     branchId?: string | null
     isApproved?: boolean
   }): Promise<User> {
@@ -212,7 +212,7 @@ class AdminService {
     userid?: string
     name?: string
     email?: string
-    role?: 'user' | 'admin' | 'super_admin'
+    role?: 'user' | 'branch_admin' | 'super_admin'
     branchId?: string
   }): Promise<User> {
     console.log('=== adminService.updateUser 호출 ===')
@@ -232,7 +232,7 @@ class AdminService {
   /**
    * 사용자 역할 변경
    */
-  async updateUserRole(userId: string, role: 'user' | 'admin' | 'super_admin'): Promise<void> {
+  async updateUserRole(userId: string, role: 'user' | 'branch_admin' | 'super_admin'): Promise<void> {
     await apiClient.patch(`/admin/users/${userId}/role`, { role })
   }
 
@@ -246,8 +246,14 @@ class AdminService {
   /**
    * 사용자 승인
    */
-  async approveUser(userId: string): Promise<User> {
-    const response = await apiClient.patch(`/admin/users/${userId}/approve`, { approved: true })
+  async approveUser(userId: string, options?: {
+    role?: 'user' | 'branch_admin' | 'super_admin'
+    branchId?: string | null
+  }): Promise<User> {
+    const response = await apiClient.patch(`/admin/users/${userId}/approve`, {
+      approved: true,
+      ...options
+    })
     return response.data.data
   }
 

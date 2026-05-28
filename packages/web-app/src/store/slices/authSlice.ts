@@ -5,7 +5,7 @@ interface User {
   userid: string
   name: string
   email: string
-  role?: 'user' | 'admin' | 'super_admin'
+  role?: 'user' | 'branch_admin' | 'super_admin'
   branchId?: string
   branchName?: string
   isApproved?: boolean

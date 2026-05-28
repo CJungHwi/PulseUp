@@ -5,11 +5,47 @@ import { fileURLToPath } from 'url'
 import jwt from 'jsonwebtoken'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.middleware.js'
 import { AuthService } from '../services/auth.service.js'
+import { DeviceService } from '../services/device.service.js'
+import { LicenseService } from '../services/license.service.js'
+import { encryptLicensePayload } from '../lib/license-cipher.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const router = Router()
+
+router.get('/license/check', async (req, res) => {
+  try {
+    const deviceToken = String(req.query.deviceToken || '')
+    if (!deviceToken) return res.status(400).json({ success: false, error: 'deviceToken이 필요합니다' })
+
+    const device = await DeviceService.getDeviceByToken(deviceToken)
+    if (!device?.store_id) return res.status(403).json({ success: false, error: '등록된 지점 디바이스가 아닙니다' })
+
+    const licenses = await LicenseService.getActiveByBranch(device.store_id)
+    if (licenses.length === 0) {
+      return res.status(403).json({ success: false, error: '활성 라이선스가 없습니다' })
+    }
+
+    const validUntilValues = licenses
+      .map((license: any) => license.valid_to)
+      .filter(Boolean)
+      .sort()
+
+    res.json({
+      success: true,
+      data: encryptLicensePayload({
+        branchId: device.store_id,
+        categories: licenses.map((license: any) => license.workout_category_id),
+        validUntil: validUntilValues[0] || null,
+        signedAt: new Date().toISOString()
+      })
+    })
+  } catch (error) {
+    console.error('Electron license check failed:', error)
+    res.status(500).json({ success: false, error: '라이선스 확인에 실패했습니다' })
+  }
+})
 
 // 리모컨/현장 제어용 단기 토큰 발급
 // - 웹 사용자의 access token으로 인증 후, Electron이 서버 API를 호출할 때 사용할 단기 토큰을 발급

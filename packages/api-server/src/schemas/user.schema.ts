@@ -5,8 +5,7 @@ export const createUserSchema = z.object({
   email: z.string().email('유효한 이메일 주소를 입력해주세요').nullable().optional().or(z.literal('').transform(() => null)),
   name: z.string().min(1, '이름은 필수입니다'),
   password: z.string().min(6, '비밀번호는 최소 6자 이상이어야 합니다'),
-  role: z.enum(['user', 'admin'/* , 'super_admin' */]).default('user'),
-  branchId: z.string().uuid('올바른 지점 ID가 아닙니다').nullable().optional().or(z.literal('').transform(() => null)),
+  branchId: z.string().nullable().optional().or(z.literal('').transform(() => null)),
 })
 
 export const loginSchema = z.object({

@@ -39,15 +39,19 @@ export const UserDropdown: React.FC = () => {
     // 메뉴 상태도 초기화
     dispatch(resetMenuState())
 
-    // 로그인 페이지로 리다이렉트
-    navigate('/login')
+    // 로그인 페이지로 리다이렉트 (이전 from 상태 제거)
+    navigate('/login', { replace: true, state: {} })
   }
 
   if (!user) {
     return null
   }
 
-  const isAdmin = user.role === 'admin' || user.role === 'super_admin'
+  const roleLabel = user.role === 'super_admin'
+    ? '슈퍼관리자'
+    : user.role === 'branch_admin'
+      ? '지점관리자'
+      : '사용자'
 
   // 사용자 이니셜 생성 (name → userid → email 순으로 대체, 안전 처리)
   const getInitials = (name?: string | null) => {
@@ -76,7 +80,7 @@ export const UserDropdown: React.FC = () => {
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-semibold text-foreground">
-              {user.name || user.email || '사용자'} ({isAdmin ? '관리자' : '사용자'})
+              {user.name || user.email || '사용자'} ({roleLabel})
             </p>
             <p className="text-xs text-muted-foreground">
               {user.email}

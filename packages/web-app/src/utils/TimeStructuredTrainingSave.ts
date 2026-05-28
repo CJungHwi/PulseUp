@@ -1,7 +1,7 @@
 import { Dayjs } from 'dayjs'
 import { generateAMRAPSequences } from './exerciseSequenceGenerator'
-import { generateEmomWorkoutExercises } from '../pages/exercises/Totalexercises/save-workout/workout-exercise-helpers'
-import type { Exercise as TotExercise, PanelRow as TotPanelRow } from '../pages/exercises/Totalexercises/types'
+import { generateEmomWorkoutExercises } from '../pages/exercises/Totalexercises/components/save-workout/workout-exercise-helpers'
+import type { Exercise as TotExercise, PanelRow as TotPanelRow } from '../pages/exercises/Totalexercises/components/types'
 
 // 운동 정보 타입
 export interface Exercise {

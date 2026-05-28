@@ -7,12 +7,13 @@
  *
  * 관련 컴포넌트: `Navigate`(react-router-dom).
  *
- * 흐름: 미인증 → `/login`, admin/super_admin → `/admin/dashboard`, 그 외 → `/dashboard`.
+ * 흐름: 미인증 → `/login`, 역할별 기본 경로(`roleDefaultRoutes`)로 리다이렉트.
  */
 
 import React from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAppSelector } from '../../hooks/redux'
+import { getDefaultRouteForRole } from '../../utils/roleDefaultRoutes'
 
 const RoleBasedRedirect: React.FC = () => {
   const { user, isAuthenticated } = useAppSelector((state) => state.auth)
@@ -21,15 +22,7 @@ const RoleBasedRedirect: React.FC = () => {
     return <Navigate to="/login" replace />
   }
 
-  // 역할에 따른 기본 대시보드로 리다이렉트
-  switch (user.role) {
-    case 'super_admin':
-    case 'admin':
-      return <Navigate to="/admin/dashboard" replace />
-    case 'user':
-    default:
-      return <Navigate to="/dashboard" replace />
-  }
+  return <Navigate to={getDefaultRouteForRole(user.role)} replace />
 }
 
 export { RoleBasedRedirect }

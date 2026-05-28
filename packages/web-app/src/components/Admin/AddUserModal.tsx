@@ -22,6 +22,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { branchApi } from '../../services/branchApi'
 import { adminService } from '../../services/admin.service'
 import { Branch } from '../../types/branch'
+import { useAuth } from '../../hooks/useAuth'
 
 interface AddUserModalProps {
   open: boolean
@@ -30,11 +31,12 @@ interface AddUserModalProps {
 }
 
 export const AddUserModal: React.FC<AddUserModalProps> = ({ open, onClose, onSuccess }) => {
+  const { user: currentUser, isBranchAdmin } = useAuth()
   const [formData, setFormData] = useState({
     userid: '',
     name: '',
     email: '',
-    role: 'user' as 'user' | 'admin' | 'super_admin',
+    role: 'user' as 'user' | 'branch_admin' | 'super_admin',
     branchId: ''
   })
   const [loading, setLoading] = useState(false)
@@ -46,12 +48,19 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ open, onClose, onSuc
   useEffect(() => {
     if (open) {
       fetchBranches()
+      if (isBranchAdmin && currentUser?.branchId) {
+        setFormData(prev => ({
+          ...prev,
+          role: 'user',
+          branchId: currentUser.branchId || ''
+        }))
+      }
     } else {
       // 모달이 닫힐 때 상태 초기화
       setBranches([])
       setError(null)
     }
-  }, [open])
+  }, [open, isBranchAdmin, currentUser?.branchId])
 
   const fetchBranches = async () => {
     try {
@@ -127,8 +136,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ open, onClose, onSuc
       userid: formData.userid.trim(),
       email: formData.email.trim() || null,
       name: formData.name.trim(),
-      role: formData.role,
-      branchId: formData.branchId || null,
+      role: isBranchAdmin ? 'user' : formData.role,
+      branchId: isBranchAdmin ? currentUser?.branchId || null : formData.branchId || null,
       isApproved: true // 승인된 사용자로 생성
     }
 
@@ -235,14 +244,14 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ open, onClose, onSuc
             <Select
               value={formData.role}
               onValueChange={(value) => handleInputChange('role', value)}
-              disabled={loading}
+              disabled={loading || isBranchAdmin}
             >
               <SelectTrigger id="role">
                 <SelectValue placeholder="역할 선택" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="user">일반 사용자</SelectItem>
-                <SelectItem value="admin">관리자</SelectItem>
+                <SelectItem value="branch_admin">지점관리자</SelectItem>
                 <SelectItem value="super_admin">슈퍼 관리자</SelectItem>
               </SelectContent>
             </Select>
@@ -253,7 +262,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ open, onClose, onSuc
             <Select
               value={formData.branchId}
               onValueChange={(value) => handleInputChange('branchId', value)}
-              disabled={loading || branchesLoading}
+              disabled={loading || branchesLoading || isBranchAdmin}
             >
               <SelectTrigger id="branch">
                 <SelectValue placeholder="지점 선택 안함" />

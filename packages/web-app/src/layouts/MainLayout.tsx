@@ -5,7 +5,7 @@
  *
  * 호출/연동: 없음(자식 페이지가 서비스 호출).
  *
- * 관련 컴포넌트: `Sidebar`, `Header`, MUI `Box`.
+ * 관련 컴포넌트: `Sidebar`, `Header`, `MenuAudienceGuard`, MUI `Box`.
  *
  * 흐름: 레이아웃 셸 고정 → `Outlet`에 `/dashboard` 등 실제 페이지 주입.
  */
@@ -16,6 +16,7 @@ import { Box, useTheme, Typography } from '@mui/material'
 import { Header } from './components/Header'
 import { Sidebar as SidebarMui } from './components/Sidebar'
 import { useTheme as useCustomTheme } from '../contexts/ThemeContext'
+import { MenuAudienceGuard } from '../components/Auth/MenuAudienceGuard'
 
 export const MainLayout: React.FC = () => {
   const muiTheme = useTheme()
@@ -110,7 +111,9 @@ export const MainLayout: React.FC = () => {
             height: 'calc(100vh - 140px)' // 전체 페이지 높이
           }}
         >
-          <Outlet />
+          <MenuAudienceGuard>
+            <Outlet />
+          </MenuAudienceGuard>
         </Box>
 
         {/* 고정 Footer */}

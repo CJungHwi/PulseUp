@@ -6,7 +6,6 @@ import * as path from 'path'
 import * as os from 'os'
 import { IPCHandlers } from './ipc-handlers.js'
 import { CertUtils } from './cert-utils.js'
-import { fileLogger } from './file-logger.js'
 import { LicenseGate } from './license-gate.js'
 
 export class ElectronHTTPServer {
@@ -157,6 +156,8 @@ export class ElectronHTTPServer {
           await this.handlePlayStart(req, res)
         } else if (pathname === '/play-intro' && method === 'POST') {
           await this.handlePlayIntro(req, res)
+        } else if (pathname === '/cancel-intro' && method === 'POST') {
+          await this.handleCancelIntro(req, res)
         } else if (pathname === '/play-pause' && method === 'POST') {
           await this.handlePlayPause(req, res)
         } else if (pathname === '/play-stop' && method === 'POST') {
@@ -512,8 +513,6 @@ export class ElectronHTTPServer {
         metadata: body.metadata
       })
 
-      fileLogger.beginWorkoutLogSession({ masterId, userId })
-
       await this.assertLicenseForPlayback()
 
       // IPC 핸들러를 통해 운동 플레이 처리
@@ -591,6 +590,30 @@ export class ElectronHTTPServer {
       this.sendResponse(res, 500, {
         success: false,
         error: '인트로 시작 중 오류가 발생했습니다',
+        message: error instanceof Error ? error.message : '알 수 없는 오류'
+      })
+    }
+  }
+
+  private async handleCancelIntro(req: http.IncomingMessage, res: http.ServerResponse) {
+    try {
+      console.log('📡 HTTP 서버: /cancel-intro 요청 받음')
+      this.applyRuntimeConfigFromHeaders(req)
+
+      const result = this.ipcHandlers.handleCancelIntro()
+
+      console.log('📡 HTTP 서버: 인트로 취소 결과:', result)
+
+      if (result.success) {
+        this.sendResponse(res, 200, result)
+      } else {
+        this.sendResponse(res, 400, result)
+      }
+    } catch (error) {
+      console.error('❌ HTTP 서버: 인트로 취소 처리 오류:', error)
+      this.sendResponse(res, 500, {
+        success: false,
+        error: '인트로 취소 중 오류가 발생했습니다',
         message: error instanceof Error ? error.message : '알 수 없는 오류'
       })
     }

@@ -1,6 +1,5 @@
 /**
- * 인트로 영상 그리드: 모든 서킷 공통 — 좌 L1~L6, 우 R1~R6, 각 seq.position 슬롯에 매핑.
- * 서킷별 차이(중앙 패널 요약 등)는 emom-intro.ts / loop-intro.ts 등에서만 다룬다.
+ * 인트로 영상 그리드: 좌측 모니터 A1–A6, 우측 모니터 B1–B6 (각 2열: num 1–3 / 4–6)
  */
 import type { IntroCircuitKind, IntroSequenceCollectContext } from '../intro-circuit'
 import { sortEmomDisplaySequences } from '../../emom/emom-constants'

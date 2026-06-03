@@ -2,6 +2,7 @@
  * Loop: 인트로 중앙 패널 및 프리뷰 position 힌트. 영상 그리드는 intro-grid-sequences.ts.
  */
 import type { WorkoutModuleContext } from '../base-module'
+import { MAIN_GRID_POSITION_ORDER } from '../../../../../common/grid-position-codes.js'
 import type { PreloadManager } from '../preload-manager'
 import { sortLoopDisplaySequences } from '../../loop/loop-constants'
 import { collectHalfLapIntroGridSequences, composeHalfLapMainPreviewOrdered } from './intro-grid-sequences'
@@ -57,7 +58,7 @@ export const primeLoopIntroStartPreload = (
 export const tryAssignLoopPreviewGridPosition = (seq: any, selectedLength: number): void => {
   let pos = String(seq.position || '')
   if (!pos) {
-    const positionOrder = ['L1', 'L2', 'L3', 'R1', 'R2', 'R3']
+    const positionOrder = [...MAIN_GRID_POSITION_ORDER].slice(0, 6)
     pos = positionOrder[selectedLength] || ''
     if (pos) seq.position = pos
   }

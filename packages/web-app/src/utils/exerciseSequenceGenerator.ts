@@ -1,11 +1,10 @@
-// 운동 실행 순서 생성 유틸리티
-
 import { buildAmrapExerciseGroups } from '../pages/exercises/Totalexercises/components/amrapGroupBuilders'
 import {
   generateWorkoutExercises,
   sortExercisesForExecution,
 } from '../pages/exercises/Totalexercises/components/save-workout/workout-exercise-helpers'
 import type { Exercise as TotExercise, PanelRow as TotPanelRow } from '../pages/exercises/Totalexercises/components/types'
+import { DEFAULT_GRID_POSITION, MAIN_GRID_POSITION_ORDER } from './gridPositionCodes'
 
 // 운동 정보 타입
 export interface Exercise {
@@ -157,11 +156,10 @@ export function generateTempExercises(exercises: Exercise[]): Exercise[] {
   //console.log('현재 운동 개수:', exerciseCount)
   //console.log('추가할 임시운동 개수:', tempExercisesNeeded)
 
-  // 위치 순서 정의
-  const positionOrder = ['L1', 'L2', 'L3', 'R1', 'R2', 'R3', 'L4', 'L5', 'L6', 'R4', 'R5', 'R6']
+  const positionOrder = [...MAIN_GRID_POSITION_ORDER]
 
   // 실제 운동들의 위치 파악
-  const usedPositions = exercises.map(ex => ex.position || 'L1')
+  const usedPositions = exercises.map(ex => ex.position || DEFAULT_GRID_POSITION)
   const lastUsedPosition = usedPositions[usedPositions.length - 1]
   const lastPositionIndex = positionOrder.indexOf(lastUsedPosition)
 

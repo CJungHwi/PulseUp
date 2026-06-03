@@ -1,6 +1,7 @@
 import type { WorkoutModuleContext } from '../shared/base-module'
 import { log } from '../shared/base-module'
 import type { PreloadManager } from '../shared/preload-manager'
+import { collectMainHalfGroupExercises, getMainHalfGroupIndexFromPosition } from '../shared/main-half-group-utils'
 import { buildTimelineForEMOM, getPreloadWindow } from '../shared/timeline-utils'
 import { resolveEmomStepDurationSec } from './emom-constants'
 
@@ -30,40 +31,21 @@ export const preloadEmomFromTimeline = (
   }
 }
 
-/**
- * EMOM 물리 슬롯 그룹(0=L1–3/R1–3, 1=L4–6/R4–6) 기준으로 **그다음** 3×2 포지션 블록 수집.
- * `getEmomHalfGroupIndex`의 전·후반(0|1)과 동일한 숫자가 아님 — 후반에서 (1+1)*3+1=7 이 되면 빈 배열이 된 문제 원인이었음.
- */
+/** EMOM 전반(A*) 기준으로 그다음 후반(B*) 포지션 블록 수집. */
 const collectNextGroupSequences = (
   ctx: WorkoutModuleContext,
-  /** 0 → L4–6 프리로드, 1 → L7+ (유효한 EMOM 그리드 없음) */
+  /** 0 → B1–B6 프리로드 */
   physicalThreeSlotGroupIndex: number,
 ): any[] => {
-  const nextGroupBase = (physicalThreeSlotGroupIndex + 1) * 3 + 1
-  const nextGroupPositions = new Set<string>()
-  for (let i = 0; i < 3; i++) {
-    nextGroupPositions.add(`L${nextGroupBase + i}`)
-    nextGroupPositions.add(`R${nextGroupBase + i}`)
-  }
-  const nextPosMap = new Map<string, any>()
-  for (const seq of ctx.activePlaySession!.sequences) {
-    if (
-      seq.round > 0 &&
-      seq.round < 99 &&
-      seq.exercise_type === 'exercise' &&
-      nextGroupPositions.has(seq.position || '') &&
-      !nextPosMap.has(seq.position || '')
-    ) {
-      nextPosMap.set(seq.position || '', seq)
-    }
-  }
-  return Array.from(nextPosMap.values())
+  return Array.from(
+    collectMainHalfGroupExercises(ctx.activePlaySession!.sequences, physicalThreeSlotGroupIndex + 1).values(),
+  )
 }
 
-/** L1–3 구간일 때 상대 슬롯(L4–6) 6포지션 선프리로드 — 인자는 항상 0 (첫 물리 블록의 '다음') */
+/** A* 구간일 때 B* 6포지션 선프리로드 — 인자는 항상 0 (첫 블록의 다음) */
 export const preloadNextEmomGroup = (
   ctx: WorkoutModuleContext,
-  /** 반드시 0 — 전반 전용(다음 블록=L4–6). 후반에서는 호출하지 않음 */
+  /** 반드시 0 — 전반 전용(다음 블록=B*). 후반에서는 호출하지 않음 */
   physicalThreeSlotGroupIndex: number,
   currentRound: number,
 ): void => {
@@ -137,28 +119,11 @@ export const preloadNextEmomGroupDuringWater = (
     )
   if (!nextExercise) return
 
-  const nextPosMatch = (nextExercise.position || '').match(/^[LR](\d+)$/)
-  const nextPosNum = nextPosMatch ? parseInt(nextPosMatch[1], 10) : 1
-  const nextEmomGroupIndex = Math.floor((nextPosNum - 1) / 3)
-  const nextGroupBase = nextEmomGroupIndex * 3 + 1
-  const nextGroupPositions = new Set<string>()
-  for (let i = 0; i < 3; i++) {
-    nextGroupPositions.add(`L${nextGroupBase + i}`)
-    nextGroupPositions.add(`R${nextGroupBase + i}`)
-  }
-
-  const nextPosMap = new Map<string, any>()
-  for (const seq of ctx.activePlaySession!.sequences) {
-    if (
-      seq.round > 0 &&
-      seq.round < 99 &&
-      seq.exercise_type === 'exercise' &&
-      nextGroupPositions.has(seq.position || '') &&
-      !nextPosMap.has(seq.position || '')
-    ) {
-      nextPosMap.set(seq.position || '', seq)
-    }
-  }
+  const nextEmomGroupIndex = getMainHalfGroupIndexFromPosition(nextExercise.position || '')
+  const nextPosMap = collectMainHalfGroupExercises(
+    ctx.activePlaySession!.sequences,
+    nextEmomGroupIndex,
+  )
 
   const nextActiveSet = {
     left: nextEmomGroupIndex > 0 ? 'set2' : 'set1',

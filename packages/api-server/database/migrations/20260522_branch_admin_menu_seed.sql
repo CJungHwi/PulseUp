@@ -11,3 +11,4 @@ SELECT NULL, '지점 공지 관리', 'Branch Notice Management', '소속 지점 
 WHERE NOT EXISTS (
   SELECT 1 FROM menus WHERE url = '/admin/notification' AND target_audience = 'branch_admin'
 );
+

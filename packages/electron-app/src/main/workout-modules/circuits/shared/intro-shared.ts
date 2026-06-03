@@ -1,15 +1,19 @@
+import {
+  DEFAULT_GRID_POSITION,
+  STRESS_LAP_ORDER,
+  normalizeGridPosition,
+} from '../../../../common/grid-position-codes.js'
+
 export const positionInMainLrGrid = (s: { position?: string }): boolean => {
   if (typeof s?.position !== 'string') return false
-  const match = s.position.match(/^[LR](\d+)$/i)
+  const normalized = normalizeGridPosition(s.position)
+  const match = normalized.match(/^[AB](\d+)$/i)
   if (!match) return false
   const index = Number(match[1])
   return index >= 1 && index <= 6
 }
 
-const INTRO_MAIN_PREVIEW_ORDER = [
-  'L1', 'L2', 'L3', 'R3', 'R2', 'R1',
-  'L4', 'L5', 'L6', 'R6', 'R5', 'R4',
-] as const
+const INTRO_MAIN_PREVIEW_ORDER = STRESS_LAP_ORDER
 
 export const sortIntroMainPreviewSequences = <T extends { position?: string }>(
   sequences: T[],
@@ -18,13 +22,15 @@ export const sortIntroMainPreviewSequences = <T extends { position?: string }>(
     INTRO_MAIN_PREVIEW_ORDER.map((pos, index) => [pos, index]),
   )
   return [...sequences].sort((a, b) => {
-    const aIdx = orderMap.get(String(a.position || '').toUpperCase()) ?? Number.MAX_SAFE_INTEGER
-    const bIdx = orderMap.get(String(b.position || '').toUpperCase()) ?? Number.MAX_SAFE_INTEGER
+    const aKey = normalizeGridPosition(a.position || '')
+    const bKey = normalizeGridPosition(b.position || '')
+    const aIdx = orderMap.get(String(aKey).toUpperCase()) ?? Number.MAX_SAFE_INTEGER
+    const bIdx = orderMap.get(String(bKey).toUpperCase()) ?? Number.MAX_SAFE_INTEGER
     return aIdx - bIdx
   })
 }
 
-/** 첫 메인 라운드의 L1–R6 포지션만 (Stress / Loop / AMRAP 인트로 공통) */
+/** 첫 메인 라운드의 A1–B6 포지션만 (Stress / Loop / AMRAP 인트로 공통) */
 export const collectIntroSequencesFirstMainRound = <T extends { round: number | string; position?: string }>(
   allExercises: T[],
   mainRound: number,
@@ -33,7 +39,7 @@ export const collectIntroSequencesFirstMainRound = <T extends { round: number | 
 
 /**
  * 인트로·프리뷰에서 두 번째 랩으로 붙일 메인 라운드 번호.
- * 후반이 있으면 rFirst+halfRounds(전반 첫 라운드 기준 후반 시작) 우선 → L4~6 영상.
+ * 후반이 있으면 rFirst+halfRounds(전반 첫 라운드 기준 후반 시작) 우선 → A4~6 영상.
  * 전반만 있으면 같은 반의 다음 플랜 라운드(예: round 2).
  */
 export const resolveIntroCompanionMainRound = (

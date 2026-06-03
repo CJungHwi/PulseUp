@@ -1,12 +1,13 @@
 import type { SlotQueueEntry, SlotQueuesMap } from './queue-builder-types'
+import {
+  GRID_FIRST_HALF_PREFIX,
+  GRID_SECOND_HALF_PREFIX,
+  type GridMonitorSide,
+  normalizeGridPosition,
+  numOffsetForSide,
+} from '../../../../common/grid-position-codes.js'
 
-export const normalizeLrGridPosition = (raw: unknown): string => {
-  const s = String(raw ?? '').trim()
-  const m = s.match(/^([lLrR])(\d+)$/)
-  if (!m) return s
-  const side = m[1].toUpperCase() === 'L' ? 'L' : 'R'
-  return `${side}${m[2]}`
-}
+export { normalizeGridPosition } from '../../../../common/grid-position-codes.js'
 
 export function filterPlayableExercises(sequences: any[]): any[] {
   return sequences.filter(
@@ -40,16 +41,17 @@ export interface MainSetsByPosition {
   set2: { [pos: string]: any }
 }
 
+/** set1 = prefix A(전반), set2 = prefix B(후반) */
 export function classifyMainByPosition(mainExercises: any[]): MainSetsByPosition {
   const set1: { [pos: string]: any } = {}
   const set2: { [pos: string]: any } = {}
   for (const seq of mainExercises) {
-    const pos = normalizeLrGridPosition(seq.position || '')
-    if (!pos || !/^[LR]\d+$/.test(pos)) continue
-    const posNum = parseInt(pos.substring(1), 10)
-    if (posNum <= 3) {
+    const pos = normalizeGridPosition(seq.position || '')
+    if (!pos || !/^[AB]\d+$/.test(pos)) continue
+    const half = pos.charAt(0)
+    if (half === GRID_FIRST_HALF_PREFIX) {
       if (!set1[pos]) set1[pos] = seq
-    } else {
+    } else if (half === GRID_SECOND_HALF_PREFIX) {
       if (!set2[pos]) set2[pos] = seq
     }
   }
@@ -62,10 +64,12 @@ export function emptySlotQueues(): SlotQueuesMap {
 
 /**
  * DS/Main/CD 엔트리를 슬롯별로 채운다.
- * prefix: 'L' 또는 'R' (좌/우 모니터)
+ * monitorSide: 좌/우 모니터 (num 1-3 vs 4-6)
+ * - 좌: A1-A3(전반), B1-B3(후반)
+ * - 우: A4-A6(전반), B4-B6(후반)
  */
 export function fillStandardSlotQueues(
-  prefix: 'L' | 'R',
+  monitorSide: GridMonitorSide,
   dsGroup1: any[],
   dsGroup2: any[],
   mainSets: MainSetsByPosition,
@@ -74,39 +78,41 @@ export function fillStandardSlotQueues(
   cdGroup2: any[],
 ): SlotQueuesMap {
   const queues = emptySlotQueues()
+  const numBase = numOffsetForSide(monitorSide)
 
   for (let i = 0; i < 3; i++) {
     const slotNum = i + 1
-    const slotPos = `${prefix}${slotNum}`
+    const num = numBase + slotNum
+    const slotDisplayPos = `${GRID_FIRST_HALF_PREFIX}${num}`
 
     if (dsGroup1[i]) {
-      queues[slotNum].push({ sequence: dsGroup1[i], position: slotPos, label: `DS${i + 1}` })
+      queues[slotNum].push({ sequence: dsGroup1[i], position: slotDisplayPos, label: `DS${i + 1}` })
     }
     if (dsGroup2[i]) {
-      queues[slotNum].push({ sequence: dsGroup2[i], position: slotPos, label: `DS${i + 4}` })
+      queues[slotNum].push({ sequence: dsGroup2[i], position: slotDisplayPos, label: `DS${i + 4}` })
     }
 
-    const mainPos1 = `${prefix}${slotNum}`
-    if (mainSets.set1[mainPos1]) {
-      queues[slotNum].push({ sequence: mainSets.set1[mainPos1], position: mainPos1, label: mainPos1 })
+    const mainPosA = `${GRID_FIRST_HALF_PREFIX}${num}`
+    if (mainSets.set1[mainPosA]) {
+      queues[slotNum].push({ sequence: mainSets.set1[mainPosA], position: mainPosA, label: mainPosA })
     }
 
     for (const block of extraBlocks) {
-      if (block[mainPos1]) {
-        queues[slotNum].push({ sequence: block[mainPos1], position: mainPos1, label: mainPos1 })
+      if (block[mainPosA]) {
+        queues[slotNum].push({ sequence: block[mainPosA], position: mainPosA, label: mainPosA })
       }
     }
 
-    const mainPos2 = `${prefix}${slotNum + 3}`
-    if (mainSets.set2[mainPos2]) {
-      queues[slotNum].push({ sequence: mainSets.set2[mainPos2], position: slotPos, label: mainPos2 })
+    const mainPosB = `${GRID_SECOND_HALF_PREFIX}${num}`
+    if (mainSets.set2[mainPosB]) {
+      queues[slotNum].push({ sequence: mainSets.set2[mainPosB], position: slotDisplayPos, label: mainPosB })
     }
 
     if (cdGroup1[i]) {
-      queues[slotNum].push({ sequence: cdGroup1[i], position: slotPos, label: `CD${i + 1}` })
+      queues[slotNum].push({ sequence: cdGroup1[i], position: slotDisplayPos, label: `CD${i + 1}` })
     }
     if (cdGroup2[i]) {
-      queues[slotNum].push({ sequence: cdGroup2[i], position: slotPos, label: `CD${i + 4}` })
+      queues[slotNum].push({ sequence: cdGroup2[i], position: slotDisplayPos, label: `CD${i + 4}` })
     }
   }
 
@@ -116,13 +122,10 @@ export function fillStandardSlotQueues(
 /**
  * 5-screen 모드용 큐 빌더 (한 패널 = 한 모니터).
  *
- * - panel='L1': DS1·2·3 → DS4·5·6 → L1·L2·L3 → CD1·2·3 → CD4·5·6
- * - panel='L2': DS1·2·3 → DS4·5·6 → L4·L5·L6 → CD1·2·3 → CD4·5·6
- * - panel='R1': DS1·2·3 → DS4·5·6 → R1·R2·R3 → CD1·2·3 → CD4·5·6
- * - panel='R2': DS1·2·3 → DS4·5·6 → R4·R5·R6 → CD1·2·3 → CD4·5·6
- *
- * DS/CD 단계는 모든 패널이 동일하게 표시(현재 3-screen DS와 동일 동작).
- * Main 단계는 각 패널이 자기 그룹의 동일 슬롯 위치만 advance.
+ * - panel='L1': DS → A1·A2·A3 (전반 좌)
+ * - panel='L2': DS → A4·A5·A6 (전반 우)
+ * - panel='R1': DS → B1·B2·B3 (후반 좌)
+ * - panel='R2': DS → B4·B5·B6 (후반 우)
  */
 export type FivePanel = 'L1' | 'L2' | 'R1' | 'R2'
 
@@ -136,23 +139,24 @@ export function fillFiveScreenSlotQueues(
   cdGroup2: any[],
 ): SlotQueuesMap {
   const queues = emptySlotQueues()
-  const sideChar: 'L' | 'R' = panel === 'L1' || panel === 'L2' ? 'L' : 'R'
-  const isSecondHalf = panel === 'L2' || panel === 'R2'
+  const halfPrefix =
+    panel === 'L1' || panel === 'L2' ? GRID_FIRST_HALF_PREFIX : GRID_SECOND_HALF_PREFIX
+  const numOffset = panel === 'L2' || panel === 'R2' ? 3 : 0
+  const mainSet = halfPrefix === GRID_FIRST_HALF_PREFIX ? mainSets.set1 : mainSets.set2
 
   for (let i = 0; i < 3; i++) {
     const slotNum = i + 1
-    const baseSlotPos = `${sideChar}${slotNum}`
+    const num = numOffset + slotNum
+    const mainPos = `${halfPrefix}${num}`
+    const slotDisplayPos = mainPos
 
     if (dsGroup1[i]) {
-      queues[slotNum].push({ sequence: dsGroup1[i], position: baseSlotPos, label: `DS${i + 1}` })
+      queues[slotNum].push({ sequence: dsGroup1[i], position: slotDisplayPos, label: `DS${i + 1}` })
     }
     if (dsGroup2[i]) {
-      queues[slotNum].push({ sequence: dsGroup2[i], position: baseSlotPos, label: `DS${i + 4}` })
+      queues[slotNum].push({ sequence: dsGroup2[i], position: slotDisplayPos, label: `DS${i + 4}` })
     }
 
-    // Main: 패널에 따라 set1(1~3) 또는 set2(4~6) 사용
-    const mainPos = isSecondHalf ? `${sideChar}${slotNum + 3}` : `${sideChar}${slotNum}`
-    const mainSet = isSecondHalf ? mainSets.set2 : mainSets.set1
     if (mainSet[mainPos]) {
       queues[slotNum].push({ sequence: mainSet[mainPos], position: mainPos, label: mainPos })
     }
@@ -164,10 +168,10 @@ export function fillFiveScreenSlotQueues(
     }
 
     if (cdGroup1[i]) {
-      queues[slotNum].push({ sequence: cdGroup1[i], position: baseSlotPos, label: `CD${i + 1}` })
+      queues[slotNum].push({ sequence: cdGroup1[i], position: slotDisplayPos, label: `CD${i + 1}` })
     }
     if (cdGroup2[i]) {
-      queues[slotNum].push({ sequence: cdGroup2[i], position: baseSlotPos, label: `CD${i + 4}` })
+      queues[slotNum].push({ sequence: cdGroup2[i], position: slotDisplayPos, label: `CD${i + 4}` })
     }
   }
 

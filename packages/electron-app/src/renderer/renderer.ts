@@ -12,13 +12,17 @@ export class ElectronRenderer extends ElectronRendererDevice {
       this.hideSplashScreen()
       if (this.workoutPlayTimerUI) {
         this.workoutPlayTimerUI.hideIntroMode()
-        if (data?.phase === 'session-start') {
-          this.workoutPlayTimerUI.applySessionStartCountdownHeader()
-        }
       }
       if (data?.phase === 'session-start' && this.workoutGridDisplay?.isQueueMode()) {
         this.workoutGridDisplay.revealFirstEntries()
       }
+
+      // 타이머: 운동 시작만 패널 영역 카운트 (SET/MOVE + READY + 숫자)
+      if (this.currentDisplay === 'timer' && data?.phase === 'session-start' && this.workoutPlayTimerUI) {
+        this.workoutPlayTimerUI.startSessionReadyCountdown(6)
+        return
+      }
+
       this.showCountdownModal(data)
     })
 
@@ -31,6 +35,14 @@ export class ElectronRenderer extends ElectronRendererDevice {
 
     window.electronAPI.onIntroCancelledResetToReady((data?: { showSplash?: boolean }) => {
       this.handleIntroCancelledResetToReady(data)
+    })
+
+    window.electronAPI.onIntroFocus((data: { target: any }) => {
+      this.handleIntroFocus(data)
+    })
+
+    window.electronAPI.onIntroFocusCancel(() => {
+      this.handleIntroFocusCancel()
     })
 
     // 🎬 운동 시작 직전 프리뷰(카운트다운 중 영상 미리 출력)
@@ -70,6 +82,16 @@ export class ElectronRenderer extends ElectronRendererDevice {
     // 운동 플레이 대기 상태 (웹에서 데이터 전송 완료) — 리모컨에서 시작/인트로 전까지 스플래시 유지
     window.electronAPI.onWorkoutPlayReady((data: any) => {
       console.log('🔵 운동 플레이 대기:', data)
+      if (data?.initDisplay) {
+        this.applyMonitorDisplayFromPayload(data.initDisplay)
+      }
+      this.showSplashScreen()
+    })
+
+    window.electronAPI.onMonitorDisplayUpdated((data: any) => {
+      if (data?.display) {
+        this.applyMonitorDisplayFromPayload(data.display)
+      }
     })
 
     // 운동 플레이 일시정지

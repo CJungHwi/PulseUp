@@ -1,4 +1,5 @@
 import type { WorkoutModuleContext } from './base-module'
+import { GRID_FIRST_HALF_PREFIX } from '../../../../common/grid-position-codes.js'
 
 /**
  * DS/CD 등 스트레칭 라운드 영상을 `stretchingMode` + positionGroups와 함께 프리로드.
@@ -30,21 +31,13 @@ export const preloadStretchingRoundGroup = (
   if (ctx.preloadedGroupKeys.has(key)) return
   ctx.preloadedGroupKeys.add(key)
 
-  const legacyPositionGroups = {
-    L1: [] as any[],
-    L2: [] as any[],
-    L3: [] as any[],
-    R1: [] as any[],
-    R2: [] as any[],
-    R3: [] as any[],
-  }
+  const legacyPositionGroups: Record<string, any[]> = {}
 
   group.forEach((item, idx) => {
-    const slotIndex = idx % 3
-    const leftPos = `L${slotIndex + 1}` as keyof typeof legacyPositionGroups
-    const rightPos = `R${slotIndex + 1}` as keyof typeof legacyPositionGroups
-    legacyPositionGroups[leftPos].push(item)
-    legacyPositionGroups[rightPos].push(item)
+    const num = groupStart + idx + 1
+    const pos = `${GRID_FIRST_HALF_PREFIX}${num}`
+    if (!legacyPositionGroups[pos]) legacyPositionGroups[pos] = []
+    legacyPositionGroups[pos].push(item)
   })
 
   ctx.broadcastToAllWindows('workout-play-preload', {

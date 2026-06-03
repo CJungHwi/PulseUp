@@ -1,5 +1,6 @@
 import { Dayjs } from 'dayjs'
 import { generateAMRAPSequences } from './exerciseSequenceGenerator'
+import { DEFAULT_GRID_POSITION } from './gridPositionCodes'
 import { generateEmomWorkoutExercises } from '../pages/exercises/Totalexercises/components/save-workout/workout-exercise-helpers'
 import type { Exercise as TotExercise, PanelRow as TotPanelRow } from '../pages/exercises/Totalexercises/components/types'
 
@@ -171,7 +172,7 @@ export function createAMRAPSaveData(
           originalExerciseId: exercise.originalExerciseId || exercise.id,
           duration: panelRowsInSeconds[0]?.time || 60, // 첫 번째 라운드의 시간(초) 사용
           reps: repsValue, // reps 값 저장 (undefined/null일 때만 기본값 10 사용)
-          position: exercise.position || 'L1', // 운동 위치 저장
+          position: exercise.position || DEFAULT_GRID_POSITION, // 운동 위치 저장
           exercise_type: 'main',
           method_name: ''
         }
@@ -221,7 +222,7 @@ export function createAMRAPSaveData(
         exercise_id: exerciseId, // 매칭된 originalExerciseId 사용
         duration: seq.duration,
         reps: repsValue,
-        position: seq.position || 'L1', // exerciseSequences에서 position 가져오기
+        position: seq.position || DEFAULT_GRID_POSITION, // exerciseSequences에서 position 가져오기
         name: seq.name,
         method_name: seq.method_name || ''
       }
@@ -351,7 +352,7 @@ export function createEMOMSaveData(
           originalExerciseId: exercise.originalExerciseId || exercise.id,
           duration: panelRowsInSeconds[0]?.time || 60, // 첫 번째 라운드의 설정시간(초) 사용
           reps: repsValue, // EMOM 횟수 저장 (undefined/null일 때만 기본값 10 사용)
-          position: exercise.position || 'L1', // 운동 위치 저장
+          position: exercise.position || DEFAULT_GRID_POSITION, // 운동 위치 저장
           exercise_type: 'main'
         }
       }),
@@ -398,7 +399,7 @@ export function createEMOMSaveData(
         exercise_id: exerciseId,
         duration: seq.duration,
         reps: repsValue,
-        position: seq.position || 'L1',
+        position: seq.position || DEFAULT_GRID_POSITION,
         name: seq.name
       }
     })

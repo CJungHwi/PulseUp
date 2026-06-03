@@ -63,6 +63,8 @@ export interface ElectronAPI {
   onShowSplashBeforeWorkout: (callback: () => void) => void
   onIntroStarted: (callback: (data: any) => void) => void
   onIntroCancelledResetToReady: (callback: (data?: { showSplash?: boolean }) => void) => void
+  onIntroFocus: (callback: (data: { target: any }) => void) => void
+  onIntroFocusCancel: (callback: () => void) => void
   onWindowModeChanged: (callback: (data: { isFullscreen: boolean }) => void) => void
   onConfigUpdated?: (callback: (config: { displayLabel?: string }) => void) => void
 
@@ -190,6 +192,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onIntroCancelledResetToReady: (callback: (data?: { showSplash?: boolean }) => void) => {
     ipcRenderer.on('intro-cancelled-reset-to-ready', (_, data) => callback(data ?? {}))
+  },
+  onIntroFocus: (callback: (data: { target: any }) => void) => {
+    ipcRenderer.on('intro-focus', (_, data) => callback(data))
+  },
+  onIntroFocusCancel: (callback: () => void) => {
+    ipcRenderer.on('intro-focus-cancel', () => callback())
+  },
+  onMonitorDisplayUpdated: (callback: (data: { display: any; context?: string }) => void) => {
+    ipcRenderer.on('monitor-display-updated', (_, data) => callback(data))
   },
   onWindowModeChanged: (callback: (data: { isFullscreen: boolean }) => void) => {
     ipcRenderer.on('window-mode-changed', (_, data) => callback(data))

@@ -39,7 +39,7 @@ export function buildStressQueue(
   }
 
   return {
-    leftQueues: fillStandardSlotQueues('L', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
-    rightQueues: fillStandardSlotQueues('R', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
+    leftQueues: fillStandardSlotQueues('left', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
+    rightQueues: fillStandardSlotQueues('right', dsGroup1, dsGroup2, mainSets, [], cdGroup1, cdGroup2),
   }
 }

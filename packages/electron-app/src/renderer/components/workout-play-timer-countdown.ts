@@ -5,6 +5,11 @@ import {
   adjustActivityLabelFontSize,
   fitCountdownToContainer,
 } from './workout-play-timer-dom-fit.js'
+import {
+  applySessionStartCountdownPanelStyle,
+  applyReadyCountdownNumberStyle,
+  updateSessionStartCountdownNumber,
+} from './workout-play-timer-ready-style.js'
 
 type CountdownInterval = ReturnType<typeof setInterval> | null
 
@@ -24,8 +29,8 @@ export type WorkoutTimerCountdownDeps = {
   applySessionStartCountdownHeader: () => void
 }
 
-/** 카운트다운 벨 정책: 운동/REST/Water Break 구간만 남은 3초·1초에 각각 1회 재생 */
-const SEQUENCE_TYPES_WITH_BELLS = new Set(['exercise', 'rest', 'water'])
+/** 카운트다운 벨: 운동/REST/Water Break + 구간 전환 READY(countdown) */
+const SEQUENCE_TYPES_WITH_BELLS = new Set(['exercise', 'rest', 'water', 'countdown'])
 
 const clearCountdownInterval = (deps: WorkoutTimerCountdownDeps): void => {
   const interval = deps.getCountdownInterval()
@@ -45,6 +50,40 @@ const maybePlayBellForCountdown = (deps: WorkoutTimerCountdownDeps): void => {
   // if (countdown === 1) {
   //   void deps.sound.playFinishBell()
   // }
+}
+
+export const startSessionReadyCountdown = (
+  deps: WorkoutTimerCountdownDeps,
+  totalSeconds: number,
+): void => {
+  deps.setStartCountdownActive(true)
+  deps.applySessionStartCountdownHeader()
+  applySessionStartCountdownPanelStyle('left')
+
+  let count = totalSeconds
+  const countdownEl = document.getElementById('countdown-left')
+  if (countdownEl) {
+    updateSessionStartCountdownNumber(countdownEl, count, deps.defaultCountdownFontSize)
+  }
+
+  clearCountdownInterval(deps)
+
+  const interval = setInterval(() => {
+    count--
+
+    if (count > 0 && countdownEl) {
+      updateSessionStartCountdownNumber(countdownEl, count, deps.defaultCountdownFontSize)
+      if (count === 3) {
+        void deps.sound.playStartBell()
+      }
+    } else if (count <= 0) {
+      clearInterval(interval)
+      deps.setCountdownInterval(null)
+      deps.setStartCountdownActive(false)
+    }
+  }, 1000)
+
+  deps.setCountdownInterval(interval)
 }
 
 export const startPreWorkoutCountdown = (
@@ -144,6 +183,14 @@ export const updateTimerCountdownDisplay = (deps: WorkoutTimerCountdownDeps): vo
     ctRaw === 'loop' || ctRaw === 'stress' || ctRaw === 'amrap' || ctRaw === 'emom' ? ctRaw : 'stress'
   const showMmSs = getTimerUiStrategy(ct).useMmSsCountdownInPhase(deps.getCountdownViewRound())
   const countdown = deps.getCountdown()
+
+  if (deps.getCurrentSequenceType() === 'countdown') {
+    countdownEl.textContent = countdown.toString()
+    applyReadyCountdownNumberStyle(countdownEl, deps.defaultCountdownFontSize)
+    fitCountdownToContainer(countdownEl)
+    countdownEl.style.animation = countdown <= 5 && countdown > 0 ? 'pulse 0.5s ease-in-out infinite' : 'none'
+    return
+  }
 
   if (showMmSs) {
     const mins = Math.floor(countdown / 60)

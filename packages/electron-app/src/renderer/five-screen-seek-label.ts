@@ -1,28 +1,49 @@
 import type { DisplayType } from './renderer-display-types.js'
+import {
+  GRID_FIRST_HALF_PREFIX,
+  GRID_SECOND_HALF_PREFIX,
+  normalizeGridPosition,
+  parseGridPosition,
+} from '../common/grid-position-codes.js'
+import { displayTypeToFivePanel, isLeftMonitorDisplay } from './renderer-display-types.js'
+
+export type ResolveMainSeekLabelOptions = {
+  /** 5분할: 패널별 큐(L1/L2/R1/R2). 3분할이면 false */
+  fiveScreen?: boolean
+}
 
 /**
- * 메인 라운드(1–98)에서 `workout-seek-queue` 가 오는 position(보통 다음 구간 첫 운동: L1 등)을
- * 현재 그리드 창의 슬롯 큐 label 과 맞춘다.
+ * 메인 seek position → 현재 화면 큐 label
  *
- * 5화면 L2/R2 패널은 메인이 L4–L6 / R4–R6 이므로, 열 번호 1–3 은 각각 +3 이 필요하다.
- * seek 는 다음 구간 **첫** 운동만 보내서 `L1` 만 오는 경우가 많은데, 우측 패널도 같은 열이면 R4 로 맞춰야 한다(L/R 접두어와 무관).
+ * 3분할: 좌 num1-3 / 우 num4-6 (A1→우측 A4)
+ * 5분할: L1 A1-3, L2 A4-6, R1 B1-3, R2 B4-6
  */
-export function resolveMainPhaseSeekLabel(display: DisplayType, position: string): string | null {
-  const m = String(position ?? '')
-    .trim()
-    .match(/^([LR])(\d+)$/i)
-  if (!m) return null
-  const num = Number(m[2])
-  if (!Number.isFinite(num) || num < 1) return null
+export function resolveMainPhaseSeekLabel(
+  display: DisplayType,
+  position: string,
+  options: ResolveMainSeekLabelOptions = {},
+): string | null {
+  const normalized = normalizeGridPosition(position)
+  const parsed = parseGridPosition(normalized)
+  if (!parsed) return null
 
-  if (display === 'workout-left-2' && num <= 3) {
-    return `L${num + 3}`
-  }
-  if (display === 'workout-right-2' && num <= 3) {
-    return `R${num + 3}`
+  const { slot } = parsed
+
+  if (options.fiveScreen) {
+    const panel = displayTypeToFivePanel(display)
+    if (panel === 'L1') return `${GRID_FIRST_HALF_PREFIX}${slot}`
+    if (panel === 'L2') return `${GRID_FIRST_HALF_PREFIX}${slot + 3}`
+    if (panel === 'R1') return `${GRID_SECOND_HALF_PREFIX}${slot}`
+    if (panel === 'R2') return `${GRID_SECOND_HALF_PREFIX}${slot + 3}`
+    return null
   }
 
-  const screenIsLeft = display === 'workout-left' || display === 'workout-left-2'
-  const prefix = screenIsLeft ? 'L' : 'R'
-  return `${prefix}${num}`
+  if (isLeftMonitorDisplay(display)) {
+    return `${parsed.prefix}${slot}`
+  }
+
+  return `${parsed.prefix}${slot + 3}`
 }
+
+/** playVideo 등 DOM position — resolveMainPhaseSeekLabel 과 동일 */
+export const mapMainPositionToDisplayLabel = resolveMainPhaseSeekLabel

@@ -1,6 +1,11 @@
 import type { RendererContext, SequenceRenderer } from './base-renderer.js'
 import { log } from './base-renderer.js'
 import { isLeftMonitorDisplay } from '../renderer-display-types.js'
+import {
+  GRID_FIRST_HALF_PREFIX,
+  GRID_SECOND_HALF_PREFIX,
+  parseGridPosition,
+} from '../../common/grid-position-codes.js'
 
 export class MainRenderer implements SequenceRenderer {
   canHandle(_data: any): boolean {
@@ -24,6 +29,18 @@ export class MainRenderer implements SequenceRenderer {
       ctx.workoutGridDisplay.resumeAllVideos()
       ctx.workoutGridDisplay.hideArrowOverlay()
       ctx.workoutGridDisplay.hidePauseOverlay()
+      // stress/loop: 같은 그룹 내 다음 운동으로 넘어갈 때 횟수 배지 갱신 (AMRAP/EMOM 과 동일)
+      if (
+        sequence?.exercise_type === 'exercise' &&
+        typeof sequence?.position === 'string' &&
+        sequence.position &&
+        !['KEEP_VIDEO', 'ALL', 'NONE', 'PAUSE_VIDEO', 'PAUSE_VIDEO_BLINK', 'PAUSE_VIDEO_ARROW'].includes(
+          sequence.position,
+        )
+      ) {
+        const slot = ctx.workoutGridDisplay.mapPositionToSlot(sequence.position)
+        ctx.workoutGridDisplay.updateRepsBadge(slot, sequence)
+      }
     } else if (position === 'PAUSE_VIDEO_BLINK') {
       log('▶️ [MainRenderer] Set 내 휴식 - || 오버레이')
       ctx.workoutGridDisplay.resumeAllVideos()
@@ -49,9 +66,10 @@ export class MainRenderer implements SequenceRenderer {
       ctx.workoutGridDisplay.resumeAllVideos()
 
       if (sequence.exercise_type === 'exercise') {
-        const positions = isLeftMonitor
-          ? (ctx.currentActiveSet === 'set1' ? ['L1', 'L2', 'L3'] : ['L4', 'L5', 'L6'])
-          : (ctx.currentActiveSet === 'set1' ? ['R1', 'R2', 'R3'] : ['R4', 'R5', 'R6'])
+        const halfPrefix =
+          ctx.currentActiveSet === 'set1' ? GRID_FIRST_HALF_PREFIX : GRID_SECOND_HALF_PREFIX
+        const nums = isLeftMonitor ? [1, 2, 3] : [4, 5, 6]
+        const positions = nums.map((n) => `${halfPrefix}${n}`)
 
         const skipPlay = ctx.hasCountdownPreview
         if (skipPlay) ctx.setHasCountdownPreview(false)
@@ -65,9 +83,11 @@ export class MainRenderer implements SequenceRenderer {
       ctx.workoutGridDisplay.hideArrowOverlay()
       ctx.workoutGridDisplay.resumeAllVideos()
 
-      const positionPrefix = position?.charAt(0)
+      const parsed = parseGridPosition(position)
+      const isLeftPosition = parsed?.side === 'left'
+      const isRightPosition = parsed?.side === 'right'
 
-      if ((isLeftMonitor && positionPrefix === 'L') || (!isLeftMonitor && positionPrefix === 'R')) {
+      if ((isLeftMonitor && isLeftPosition) || (!isLeftMonitor && isRightPosition)) {
         if (sequence.exercise_type === 'exercise') {
           const skipPlay = ctx.hasCountdownPreview
           if (skipPlay) ctx.setHasCountdownPreview(false)

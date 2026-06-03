@@ -58,7 +58,7 @@ const mapDetailFromApi = (item: any, index: number): WorkoutDetail => ({
   equipment: item.equipment || '',
   characteristics: item.characteristics || '',
   purpose: item.purpose || '',
-  position: convertServerPositionToDS(item.position || 'L1'),
+  position: convertServerPositionToDS(item.position || 'A1'),
   video_url: item.video_url || '',
   time: item.duration || item.time || 30,
   video_start_time: item.video_start_time || 0,

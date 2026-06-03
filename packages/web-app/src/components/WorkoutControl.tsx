@@ -4,7 +4,7 @@
  * 기능: 디바이스 연결·제어 잠금·재생/일시정지/스킵·화면 모드·심박 원격 진단·세션 상태 폴링.
  *
  * 호출/연동:
- * - `deviceService` 전반: `checkDeviceStatus`, `getControlLockStatus`, `getScreenMode`, `setScreenMode`, `getSessionStatus`, `playStart`/`playPause`/`playStop`/`playNext`/`playPrevious`, `getHeartRateDiagnostics` 등
+ * - `deviceService` 전반: `checkDeviceStatus`, `getControlLockStatus`, `getScreenMode`, `setScreenMode`, `getSessionStatus`, `playIntro`/`cancelIntro`/`playStart`/`playPause`/`playStop`/`playNext`/`playPrevious`, `getHeartRateDiagnostics` 등
  * - API 경로·DB는 `deviceService` → `packages/api-server` Electron 릴레이 라우트 참조.
  *
  * 관련 컴포넌트: `HeartRateRemoteDiagnosticsPanel`, `ConfirmDialog`, shadcn `Button`/`Card`/`Alert`.
@@ -35,9 +35,9 @@ export function WorkoutControl() {
   const [isElectronConnected, setIsElectronConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [quitDialogOpen, setQuitDialogOpen] = useState(false)
-  const [displayLabel, setDisplayLabel] = useState<string>(() => {
-    return localStorage.getItem('displayLabel') || '링크힛 운동 시스템'
-  })
+  // const [displayLabel, setDisplayLabel] = useState<string>(() => {
+  //   return localStorage.getItem('displayLabel') || '링크힛 운동 시스템'
+  // })
   const [screenMode, setScreenMode] = useState<ScreenMode>(3)
   const [screenModeLoaded, setScreenModeLoaded] = useState(false)
   const [serverPlayStatus, setServerPlayStatus] = useState<deviceService.PlaySessionStatus | null>(null)
@@ -193,9 +193,21 @@ export function WorkoutControl() {
     }
   }
 
-  const handleIntro = async () => {
+  const handleIntroToggle = async () => {
+    if (isIntroPlaying) {
+      const success = await executeCommand(
+        () => deviceService.cancelIntro(deviceId),
+        '인트로를 취소했습니다',
+        '인트로 취소 실패'
+      )
+      if (success) {
+        setIsIntroPlaying(false)
+      }
+      return
+    }
+
     const success = await executeCommand(
-      () => deviceService.sendDeviceCommand(deviceId, 'play-intro', {}),
+      () => deviceService.playIntro(deviceId),
       '인트로를 시작합니다',
       '인트로 시작 실패'
     )
@@ -315,16 +327,16 @@ export function WorkoutControl() {
     )
   }
 
-  const handleApplyDisplayLabel = async () => {
-    const success = await executeCommand(
-      () => deviceService.sendDeviceCommand(deviceId, 'set-display-label', { displayLabel }),
-      '화면 표시 텍스트가 반영되었습니다',
-      '텍스트 반영 실패'
-    )
-    if (success) {
-      localStorage.setItem('displayLabel', displayLabel)
-    }
-  }
+  // const handleApplyDisplayLabel = async () => {
+  //   const success = await executeCommand(
+  //     () => deviceService.sendDeviceCommand(deviceId, 'set-display-label', { displayLabel }),
+  //     '화면 표시 텍스트가 반영되었습니다',
+  //     '텍스트 반영 실패'
+  //   )
+  //   if (success) {
+  //     localStorage.setItem('displayLabel', displayLabel)
+  //   }
+  // }
 
   const handleQuitAppClick = () => {
     setQuitDialogOpen(true)
@@ -380,7 +392,7 @@ export function WorkoutControl() {
   }
 
   return (
-    <div className="p-4 w-full h-[100dvh] bg-[#1a1a1a] flex flex-col overflow-hidden">
+    <div className="p-4 w-full h-full min-h-0 bg-[#1a1a1a] flex flex-col overflow-hidden">
       {/* 디바이스 정보 */}
       <div className="text-[10px] text-gray-500 mb-1 flex justify-between opacity-50">
         <span>링크힛: {deviceLabel} | {status}</span>
@@ -457,7 +469,7 @@ export function WorkoutControl() {
             </h2>
           </div>
 
-          {/* 화면 표시 텍스트 설정 */}
+          {/* 화면 표시 텍스트 설정 — 비표시
           <div className="mb-3 pb-3 border-b border-white/10">
             <label htmlFor="display-label" className="block text-sm font-medium text-white/80 mb-2">
               📺 Electron 화면 표시 텍스트
@@ -482,6 +494,7 @@ export function WorkoutControl() {
               </Button>
             </div>
           </div>
+          */}
 
           {/* 화면 구성 (3분할 / 5분할) */}
           {(() => {
@@ -546,12 +559,17 @@ export function WorkoutControl() {
                 <>
                   <Button
                     size="lg"
-                    className="w-full text-xl font-semibold py-6 min-h-[132px] bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
-                    onClick={handleIntro}
-                    disabled={!canControl || isIntroPlaying || isLoading}
+                    className={cn(
+                      'w-full text-xl font-semibold py-6 min-h-[132px] disabled:opacity-50 flex items-center justify-center gap-2',
+                      isIntroPlaying
+                        ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-600'
+                        : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600'
+                    )}
+                    onClick={handleIntroToggle}
+                    disabled={!canControl || isLoading}
                   >
                     <Tv className="w-5 h-5 shrink-0" />
-                    인트로
+                    {isIntroPlaying ? '인트로 취소' : '인트로'}
                   </Button>
 
                   <Button

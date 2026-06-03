@@ -1920,59 +1920,82 @@ CREATE OR REPLACE PROCEDURE sp_GetWorkoutHistoryMaster(
     IN p_admin VARCHAR(1)
 )
 BEGIN
-    SELECT 
-        whm.id,
-        whm.date,
-        whm.time,
-        whm.memo,
-        whm.admin as is_admin,
-        COALESCE(MAX(wc.id), whm.workout_categories_id) as workout_categories_id,
-        COALESCE(MAX(wc.major_category), whm.workout_categories_id) as major_category,
-        COALESCE(MAX(wc.major_category_name), whm.workout_categories_id) as major_category_name,
-        COALESCE(MAX(whp.circuit_type), whm.method_type) as circuit_type,
+    SELECT
+        q.id,
+        q.date,
+        q.time,
+        q.memo,
+        q.is_admin,
+        q.workout_categories_id,
+        q.major_category,
+        q.major_category_name,
+        q.circuit_type,
         CONCAT(
-            LPAD(FLOOR(COALESCE(MAX(whm.total_seconds), 
-                CASE 
-                    WHEN whm.workout_categories_id IN ('Dynamic_stretching', 'Static_stretching') 
-                    THEN MAX(whd.duration)
-                    ELSE SUM(whd.duration)
-                END, 0) / 60), 2, '0'),
+            LPAD(FLOOR(q.total_workout_time / 60), 2, '0'),
             '분',
-            LPAD(COALESCE(MAX(whm.total_seconds),
-                CASE 
-                    WHEN whm.workout_categories_id IN ('Dynamic_stretching', 'Static_stretching') 
-                    THEN MAX(whd.duration)
-                    ELSE SUM(whd.duration)
-                END, 0) % 60, 2, '0'),
+            LPAD(MOD(q.total_workout_time, 60), 2, '0'),
             '초'
-        ) as workout_time,
-        COALESCE(MAX(whm.total_seconds),
-            CASE 
-                WHEN whm.workout_categories_id IN ('Dynamic_stretching', 'Static_stretching') 
-                THEN MAX(whd.duration)
-                ELSE SUM(whd.duration)
-            END, 0) as total_workout_time,
-        COALESCE(whm.ds_seconds, 0) as ds_seconds,
-        COALESCE(whm.main_seconds, 0) as main_seconds,
-        COALESCE(whm.cd_seconds, 0) as cd_seconds,
-        COALESCE(whm.total_seconds, 0) as total_seconds
-    FROM workout_history_master whm
-    LEFT JOIN workout_history_detail whd ON whm.id = whd.workout_history_master_id
-    LEFT JOIN workout_history_plan whp ON whm.id = whp.workout_history_master_id
-    LEFT JOIN workout_categories wc ON (whm.workout_categories_id = wc.id OR whm.workout_categories_id = wc.major_category OR whm.workout_categories_id = wc.minor_category)
-    WHERE ((p_admin = '1' AND whm.admin = TRUE)
-       OR ((p_admin = '0' OR p_admin IS NULL OR p_admin = '') AND whm.user_id = p_user_id AND (whm.admin = FALSE OR whm.admin IS NULL)))
-      AND (p_year_month IS NULL OR p_year_month = '' OR DATE_FORMAT(whm.date, '%Y-%m') = p_year_month)
-      AND (p_memo IS NULL OR p_memo = '' OR whm.memo LIKE CONCAT('%', p_memo, '%'))
-      AND (p_workout_category IS NULL OR p_workout_category = '' 
-           OR whm.workout_categories_id = p_workout_category
-           OR wc.id = p_workout_category
-           OR wc.major_category = p_workout_category
-           OR wc.minor_category = p_workout_category)
-      AND (p_circuit_type IS NULL OR p_circuit_type = '' 
-           OR COALESCE(whp.circuit_type, whm.method_type) = p_circuit_type)
-    GROUP BY whm.id, whm.date, whm.time, whm.memo, whm.workout_categories_id, whm.method_type
-    ORDER BY whm.date DESC, whm.time DESC;
+        ) AS workout_time,
+        q.total_workout_time,
+        q.ds_seconds,
+        q.main_seconds,
+        q.cd_seconds,
+        q.total_seconds
+    FROM (
+        SELECT
+            whm.id,
+            whm.date,
+            whm.time,
+            whm.memo,
+            whm.admin AS is_admin,
+            COALESCE(wc.id, whm.workout_categories_id) AS workout_categories_id,
+            COALESCE(wc.major_category, whm.workout_categories_id) AS major_category,
+            COALESCE(wc.major_category_name, whm.workout_categories_id) AS major_category_name,
+            COALESCE(plan_summary.circuit_type, whm.method_type) AS circuit_type,
+            COALESCE(
+                whm.total_seconds,
+                CASE
+                    WHEN COALESCE(wc.major_category, whm.workout_categories_id) IN ('DS', 'CD', 'Dynamic_stretching', 'Static_stretching')
+                    THEN COALESCE(detail_summary.max_duration, 0)
+                    ELSE COALESCE(detail_summary.sum_duration, 0)
+                END,
+                0
+            ) AS total_workout_time,
+            COALESCE(whm.ds_seconds, 0) AS ds_seconds,
+            COALESCE(whm.main_seconds, 0) AS main_seconds,
+            COALESCE(whm.cd_seconds, 0) AS cd_seconds,
+            COALESCE(whm.total_seconds, 0) AS total_seconds
+        FROM workout_history_master whm
+        LEFT JOIN (
+            SELECT workout_history_master_id, SUM(duration) AS sum_duration, MAX(duration) AS max_duration
+            FROM workout_history_detail
+            GROUP BY workout_history_master_id
+        ) detail_summary ON whm.id = detail_summary.workout_history_master_id
+        LEFT JOIN (
+            SELECT
+                workout_history_master_id,
+                SUBSTRING_INDEX(GROUP_CONCAT(circuit_type ORDER BY round SEPARATOR ','), ',', 1) AS circuit_type
+            FROM workout_history_plan
+            GROUP BY workout_history_master_id
+        ) plan_summary ON whm.id = plan_summary.workout_history_master_id
+        LEFT JOIN workout_categories wc ON (
+            whm.workout_categories_id = wc.id
+            OR whm.workout_categories_id = wc.major_category
+            OR whm.workout_categories_id = wc.minor_category
+        )
+        WHERE ((p_admin = '1' AND whm.admin = TRUE)
+           OR ((p_admin = '0' OR p_admin IS NULL OR p_admin = '') AND whm.user_id = p_user_id AND (whm.admin = FALSE OR whm.admin IS NULL)))
+          AND (p_year_month IS NULL OR p_year_month = '' OR DATE_FORMAT(whm.date, '%Y-%m') = p_year_month)
+          AND (p_memo IS NULL OR p_memo = '' OR whm.memo LIKE CONCAT('%', p_memo, '%'))
+          AND (p_workout_category IS NULL OR p_workout_category = ''
+               OR whm.workout_categories_id = p_workout_category
+               OR wc.id = p_workout_category
+               OR wc.major_category = p_workout_category
+               OR wc.minor_category = p_workout_category)
+          AND (p_circuit_type IS NULL OR p_circuit_type = ''
+               OR COALESCE(plan_summary.circuit_type, whm.method_type) = p_circuit_type)
+    ) q
+    ORDER BY q.date DESC, q.time DESC;
 END //
 
 -- 운동 기록 상세 조회

@@ -55,6 +55,24 @@ export function unwrapProcedureFirstRow<T = unknown>(result: unknown): T | null 
   return rows.length > 0 ? rows[0] : null
 }
 
+/** CALL 다중 SELECT 결과에서 n번째(0-based) 결과 집합 행 배열 추출 */
+export function unwrapProcedureResultSetAt<T = unknown>(result: unknown, index: number): T[] {
+  if (!Array.isArray(result) || index < 0 || index >= result.length) return []
+
+  const slice = result[index]
+  const isRowObject = (item: unknown) =>
+    item != null && typeof item === 'object' && !Array.isArray(item) && !('fieldCount' in item)
+
+  if (Array.isArray(slice)) {
+    if (slice.length === 0) return []
+    if (Array.isArray(slice[0])) return slice[0] as T[]
+    if (slice.every(isRowObject)) return slice as T[]
+    return isRowObject(slice[0]) ? (slice as T[]) : []
+  }
+
+  return isRowObject(slice) ? [slice as T] : []
+}
+
 // 저장 프로시저 실행 헬퍼 함수
 export async function callProcedure(
   procedureName: string,

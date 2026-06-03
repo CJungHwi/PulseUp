@@ -5,6 +5,7 @@
  * - `fmtSeconds`: 초 → mm:ss
  * - `isDS`/`isCD`: major_category 분류 헬퍼
  * - `isAMRAPorEMOM`: 카테고리 ID/Name으로 AMRAP/EMOM 판단
+ * - `showWorkoutDetailRepsColumn`: AMRAP/EMOM 또는 stress/loop MAIN 횟수 컬럼 표시 여부
  */
 
 import type { ExerciseSequence, WorkoutPlan } from './monthProgramTypes'
@@ -109,6 +110,20 @@ export const isAMRAPorEMOMCategory = (
   const mcId = (workoutCategoriesId || workoutCategory || '').toString().toUpperCase()
   const mcName = (workoutCategoriesName || '').toString().toUpperCase()
   return mcId === 'AMRAP' || mcId === 'EMOM' || mcName === 'AMRAP' || mcName === 'EMOM'
+}
+
+/** AMRAP/EMOM 또는 stress/loop — 운동 상세 테이블에 횟수 컬럼 표시 */
+export const showWorkoutDetailRepsColumn = (
+  workoutCategoriesId?: string,
+  workoutCategory?: string,
+  workoutCategoriesName?: string,
+  circuitType?: string,
+): boolean => {
+  if (isAMRAPorEMOMCategory(workoutCategoriesId, workoutCategory, workoutCategoriesName)) {
+    return true
+  }
+  const ct = (circuitType || '').toLowerCase()
+  return ct === 'stress' || ct === 'loop'
 }
 
 export const fmtPlanTime = (val: number, isMinute: boolean): string => {

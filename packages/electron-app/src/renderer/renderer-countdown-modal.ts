@@ -26,9 +26,9 @@ export const showCountdownModal = (ctx: CountdownModalContext): void => {
     return
   }
 
-  // 타이머 창: 운동 시작(session-start)일 때만 전체화면 모달 — 구간 전환은 패널(#countdown-left)만
-  if (currentDisplay === 'timer' && phase !== 'session-start') {
-    console.log('🎬 [DEBUG] 타이머 화면: 구간 전환 — 패널만, 전체화면 모달 스킵')
+  // 타이머 창: 운동 시작(session-start)은 패널 카운트 / 구간 전환은 패널(#countdown-left)만
+  if (currentDisplay === 'timer') {
+    console.log('🎬 [DEBUG] 타이머 화면: 패널 카운트다운 사용 — 모달 스킵')
     return
   }
 
@@ -131,16 +131,10 @@ export const showCountdownModal = (ctx: CountdownModalContext): void => {
         countdownText.style.animation = 'pulse 1s ease-in-out'
       }, 10)
 
-      // 벨은 타이머 윈도우 한 곳에서만 — 다중 모달(timer + workout)이 동시 호출되어
-      // 같은 PC 스피커로 두 번 울리는 것을 방지
-      if (phase === 'session-start' && currentDisplay === 'timer') {
+      if (phase === 'session-start' && currentDisplay === 'workout') {
         if (count === 3) {
           void countdownSound.playStartBell()
         }
-        // PulseFinishBell.MP3 는 파일 자체에 종소리가 2회 들어 있어 비활성화 (사용자 요청)
-        // else if (count === 1) {
-        //   void countdownSound.playFinishBell()
-        // }
       }
     } else {
       clearInterval(interval)

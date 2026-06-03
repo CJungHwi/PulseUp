@@ -4,14 +4,16 @@
  * 기능: 이력(일반/관리자)·서킷·AMRAP·EMOM 편집, Vimeo 미리보기, 저장·삭제.
  *
  * 호출/연동:
- * - `GET` `workout-setting`, `workout-categories`, `workout-history-master`, `workout-exercises-summary`, `workout-history-detail` 등
+ * - `GET /workout-categories/workout-history-master` (yearMonth, workoutCategory, circuitType, memo, admin)
+ * - `GET|PUT /workout-categories/workout/:masterId/monitor-display-profile`
  * - 저장: `saveCircuit` → `POST .../HyberStrengthCircuitSave`; `saveAMRAP` → `POST .../Time-StructuredAMRAP`; `saveEMOM` → `POST .../Time-StructuredEMOM`
  * - `DELETE /workout-categories/workout-history/:id`
  * - DB/SP는 `packages/api-server` 운동 저장 라우트 참조.
  *
  * 관련 컴포넌트: `WorkoutHistory`, `WorkoutEditor`, `ExerciseSelectionModal`, `saveWorkout` 모듈.
  *
- * 흐름: 이력 선택 → 에디터에서 패널 구성 → 유형별 저장 함수 → API.
+ * 흐름: 이력 선택 → 에디터에서 패널 구성 → super_admin 전용 관리자체크 상태 유지 → 유형별 저장 함수 → API.
+ * position: 메인 A1~A6(좌) / B1~B6(우)
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
@@ -32,6 +34,35 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 // Types & Logic
 import { Exercise, PanelRow, WorkoutMaster, WorkoutTimeSummary } from './components/types'
 import { saveCircuit, saveAMRAP, saveEMOM, getMainCircuitTotalSecondsFromPanels, getEmomTimeBreakdownFromPanels } from './components/saveWorkout'
+import {
+  emptyMonitorProfile,
+  fetchWorkoutMonitorDisplayProfile,
+  saveWorkoutMonitorDisplayProfile
+} from '@/services/monitorDisplayApi'
+import type { MonitorDisplayProfileState } from '@/pages/WorkoutSettings/components/MonitorDisplayTabs'
+import {
+  getMainPositionSortValue,
+  positionFromMainIndex,
+} from '@/utils/gridPositionCodes'
+
+/** WorkoutSettings(`/workout-settings`)에 등록된 방법별 기본 횟수 — MAIN은 circuitType(stress|loop) 키 사용 */
+const resolveDefaultRepsFromSettings = (
+  majorCategory: string,
+  circuitType: string,
+  workoutSettings: Record<string, { reps?: number }[]>,
+  fallback = 10,
+): number => {
+  const settingKey = majorCategory === 'MAIN' ? circuitType : majorCategory
+  const settings = workoutSettings[settingKey]
+  if (Array.isArray(settings) && settings.length > 0) {
+    const reps = Number(settings[0].reps ?? 0)
+    if (reps > 0) return reps
+  }
+  if (majorCategory === 'AMRAP' || majorCategory === 'EMOM' || majorCategory === 'MAIN') {
+    return fallback
+  }
+  return fallback
+}
 
 const resolveWorkoutSaveErrorMessage = (error: unknown): string => {
   if (isAxiosError(error)) {
@@ -58,7 +89,7 @@ const resolveWorkoutSaveErrorMessage = (error: unknown): string => {
 export default function Totalexercises() {
   const { showSnackbar } = useSnackbar()
   const { user } = useAppSelector((state) => state.auth)
-  const isUserAdmin = user?.role === 'branch_admin' || user?.role === 'super_admin'
+  const isSystemAdmin = user?.role === 'super_admin'
   
   const toast = useMemo(() => {
     return {
@@ -71,6 +102,8 @@ export default function Totalexercises() {
   // --- Left Panel State (History) ---
   const [selectedDate, setSelectedDate] = useState<Dayjs | null>(dayjs())
   const [memoFilter, setMemoFilter] = useState('')
+  const [historyExerciseType, setHistoryExerciseType] = useState('전체')
+  const [historyCircuitType, setHistoryCircuitType] = useState('전체')
   const [workoutMasters, setWorkoutMasters] = useState<WorkoutMaster[]>([])
   const [adminWorkoutMasters, setAdminWorkoutMasters] = useState<WorkoutMaster[]>([])
   const [selectedMasterId, setSelectedMasterId] = useState<string | null>(null)
@@ -95,6 +128,8 @@ export default function Totalexercises() {
   const [dynamicExercises, setDynamicExercises] = useState<Exercise[]>([])
   const [coolDownExercises, setCoolDownExercises] = useState<Exercise[]>([])
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
+  const [workoutMonitorDisplay, setWorkoutMonitorDisplay] =
+    useState<MonitorDisplayProfileState>(emptyMonitorProfile())
 
   // Panels
   const [panelRows, setPanelRows] = useState<PanelRow[]>([])
@@ -227,6 +262,11 @@ export default function Totalexercises() {
     [majorCategory, circuitType],
   )
 
+  const defaultRepsFromSettings = useMemo(
+    () => resolveDefaultRepsFromSettings(majorCategory, circuitType, workoutSettings),
+    [majorCategory, circuitType, workoutSettings],
+  )
+
   const isWaterBreakLastRowOnly = useMemo(
     () => isMainStressOrLoop || majorCategory === 'EMOM',
     [isMainStressOrLoop, majorCategory],
@@ -237,13 +277,6 @@ export default function Totalexercises() {
     fetchCategories()
     fetchWorkoutSettings()
   }, [])
-
-  // 관리자인 경우 자동으로 관리자 체크 활성화
-  useEffect(() => {
-    if (isUserAdmin && !isAdmin) {
-      setIsAdmin(true)
-    }
-  }, [isUserAdmin, isAdmin])
 
   const fetchWorkoutSettings = async () => {
     try {
@@ -283,34 +316,48 @@ export default function Totalexercises() {
     }
   }
 
-  const mapMasterData = useCallback((data: any[]): WorkoutMaster[] => data.map((m: any) => ({
-    id: m.id || m.workout_history_master_id,
-    date: m.date,
-    time: m.time,
-    memo: m.memo,
-    is_admin: m.is_admin ?? m.admin ?? m.isAdmin,
-    workoutCategoriesId: m.workout_categories_id || m.workout_category_id,
-    majorCategory: m.major_category,
-    workoutCategoriesName: m.major_category_name || m.workout_categories_name || m.workout_category_name,
-    circuitType: m.circuit_type || m.method_type,
-    workoutTime: m.workout_time || m.workoutTime || m.total_workout_time
-  })), [])
+  const mapMasterData = useCallback((data: any[], defaultIsAdmin = false): WorkoutMaster[] => {
+    const mapped = data.map((m: any) => ({
+      id: m.id || m.workout_history_master_id,
+      date: m.date,
+      time: m.time,
+      memo: m.memo,
+      is_admin: m.is_admin ?? m.admin ?? m.isAdmin ?? defaultIsAdmin,
+      workoutCategoriesId: m.workout_categories_id || m.workout_category_id,
+      majorCategory: m.major_category,
+      workoutCategoriesName: m.major_category_name || m.workout_categories_name || m.workout_category_name,
+      circuitType: m.circuit_type || m.method_type,
+      workoutTime: m.workout_time || m.workoutTime || m.total_workout_time,
+      created_at: m.created_at || '',
+    }))
+    return mapped.sort((a, b) => {
+      const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime()
+      if (dateCompare !== 0) return dateCompare
+      return new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()
+    })
+  }, [])
+
+  const buildHistorySearchParams = useCallback(
+    (targetDate: Dayjs, admin: '0' | '1') => ({
+      yearMonth: targetDate.format('YYYY-MM'),
+      memo: memoFilter || '',
+      workoutCategory: historyExerciseType === '전체' ? '' : historyExerciseType,
+      circuitType: historyCircuitType === '전체' ? '' : historyCircuitType,
+      admin,
+    }),
+    [memoFilter, historyExerciseType, historyCircuitType],
+  )
 
   const handleSearch = useCallback(async (overrideSelectedDate?: Dayjs | null) => {
     const targetDate = overrideSelectedDate ?? selectedDate
     if (!targetDate) return
     setIsLoadingHistory(true)
     try {
-      const searchDate = targetDate.format('YYYY-MM')
       const response = await api.get('/workout-categories/workout-history-master', {
-        params: {
-          yearMonth: searchDate,
-          memo: memoFilter || undefined,
-          admin: '0'
-        }
+        params: buildHistorySearchParams(targetDate, '0'),
       })
       if (response.data.success) {
-        setWorkoutMasters(mapMasterData(response.data.data || []))
+        setWorkoutMasters(mapMasterData(response.data.data || [], false))
       }
     } catch (error) {
       console.error('History Search Error:', error)
@@ -318,30 +365,25 @@ export default function Totalexercises() {
     } finally {
       setIsLoadingHistory(false)
     }
-  }, [memoFilter, selectedDate, toast, mapMasterData])
+  }, [selectedDate, toast, mapMasterData, buildHistorySearchParams])
 
   const handleSearchAdmin = useCallback(async (overrideSelectedDate?: Dayjs | null) => {
     const targetDate = overrideSelectedDate ?? selectedDate
     if (!targetDate) return
     setIsLoadingAdminHistory(true)
     try {
-      const searchDate = targetDate.format('YYYY-MM')
       const response = await api.get('/workout-categories/workout-history-master', {
-        params: {
-          yearMonth: searchDate,
-          memo: memoFilter || undefined,
-          admin: '1'
-        }
+        params: buildHistorySearchParams(targetDate, '1'),
       })
       if (response.data.success) {
-        setAdminWorkoutMasters(mapMasterData(response.data.data || []))
+        setAdminWorkoutMasters(mapMasterData(response.data.data || [], true))
       }
     } catch (error) {
       console.error('Admin History Search Error:', error)
     } finally {
       setIsLoadingAdminHistory(false)
     }
-  }, [memoFilter, selectedDate, mapMasterData])
+  }, [selectedDate, mapMasterData, buildHistorySearchParams])
 
   useEffect(() => {
     handleSearch()
@@ -502,122 +544,139 @@ export default function Totalexercises() {
     console.log('[Totalexercises] 더블클릭 - 호출 프로시저:', procedureName, '| masterId:', master.id)
     try {
       const response = await api.get(`/workout-categories/workout-history-detail/${master.id}`)
-      if (response.data.success) {
-        const { master: m, details, plans } = response.data.data
-        console.log('[Totalexercises] 프로시저 반환값:', {
-          procedure: procedureName,
-          master: m,
-          details,
-          plans,
-          detailsCount: details?.length ?? 0,
-          plansCount: plans?.length ?? 0
-        })
-
-        // Reset state before loading new data
-        resetEditorState()
-
-        setRightSelectedDate(dayjs(m.date))
-        setMemo(m.memo || '')
-        // workout_categories_id를 문자열로 변환하여 select value와 매칭
-        const foundCat = m.workout_categories_id ? workoutCategories.find(c =>
-          c.id?.toString() === String(m.workout_categories_id) ||
-          c.minor_category === String(m.workout_categories_id) ||
-          c.major_category === String(m.workout_categories_id)
-        ) : null
-
-        const categoryValue = foundCat ? foundCat.major_category : (m.workout_categories_id ? String(m.workout_categories_id) : '운동선택')
-        setRightExerciseType(categoryValue)
-        setCircuitType(m.method_type || 'stress')
-
-        const isAdminRecord = !!(m.is_admin ?? master.is_admin)
-        if (isAdminRecord && !isUserAdmin) {
-          setCurrentEditingMasterId(null)
-          setOriginalDate(null)
-          setOriginalCategory(null)
-          setOriginalCircuitType(null)
-          setIsAdmin(false)
-          toast.success('관리자 운동을 불러왔습니다. 저장 시 나의 운동으로 복사됩니다.')
-        } else {
-          setCurrentEditingMasterId(m.id)
-          setOriginalDate(dayjs(m.date).format('YYYY-MM-DD'))
-          setOriginalCategory(categoryValue)
-          setOriginalCircuitType(m.method_type || m.circuit_type || null)
-          setIsAdmin(isAdminRecord)
-        }
-
-        const loadedEx: Exercise[] = []
-        const loadedDS: Exercise[] = []
-        const loadedCD: Exercise[] = []
-
-        details.forEach((d: any, index: number) => {
-          // major_category를 대소문자 구분 없이 비교
-          const majorCat = d.major_category ? String(d.major_category).toUpperCase() : null
-
-          const ex: Exercise = {
-            id: `applied-${m.id}-${d.exercises_id}-${index}`,
-            originalExerciseId: d.exercises_id,
-            name_ko: d.exercise_name || d.name_ko || d.exercise_name_ko || '',
-            name_en: d.video_title || d.exercise_name_en || d.name_en || '', // 프로시저에서 video_title로 반환
-            level: d.level || 'beginner',
-            target_muscles: d.target_muscles || '',
-            characteristics: d.characteristics || '',
-            equipment: d.equipment || '',
-            purpose: d.description || d.purpose || '', // 프로시저에서 description으로 반환
-            duration: d.duration || 30,
-            video_url: d.video_url || '',
-            major_category: majorCat || '',
-            major_category_name: d.major_category_name || '',
-            workout_category_id: d.workout_category_id || d.workoutCategoryId || d.exercise_type || null, // exercise_type이 workout_category_id로 저장됨
-            position: d.position || '',
-            reps: (categoryValue === 'AMRAP' || categoryValue === 'EMOM') ? (d.reps || 10) : (d.reps || 0)
-          }
-
-          // major_category 기준으로 분류 (exercise_type은 무시하고 major_category만 사용)
-          const isDynamic = majorCat === 'DS' // ||
-            //majorCat === 'DYNAMIC_STRETCHING' ||
-            //majorCat === 'DS'
-
-          const isCoolDown = majorCat === 'CD' // ||
-            //majorCat === 'COOL_DOWN' ||
-            //majorCat === 'STATIC-STRETCHING' ||
-            //majorCat === 'STATIC_STRETCHING' ||
-            //majorCat === 'CD'
-
-          if (isDynamic) {
-            loadedDS.push(ex)
-          } else if (isCoolDown) {
-            loadedCD.push(ex)
-          } else {
-            // MAIN, AMRAP, EMOM 등 모든 메인 운동
-            loadedEx.push(ex)
-          }
-        })
-
-        setExercises(reorderPositions(sortExercisesByPosition(loadedEx), 'main'))
-        setDynamicExercises(reorderPositions(sortExercisesByPosition(loadedDS), 'dynamic'))
-        setCoolDownExercises(reorderPositions(sortExercisesByPosition(loadedCD), 'cooldown'))
-
-        if (plans) {
-          const cat = workoutCategories.find(c => c.id?.toString() === m.workout_categories_id)
-          const major = cat?.major_category || m.major_category || String(m.workout_categories_id || '')
-          const isTimeStructured = major === 'AMRAP' || major === 'EMOM'
-          setPanelRows(plans.map((p: any) => {
-            const hyd = Number(p.hydration ?? 0)
-            const restSec = Number(p.rest ?? 0)
-            return {
-              id: `${Date.now()}_${p.round}_${Math.random()}`,
-              round: p.round,
-              time: isTimeStructured ? Math.floor(p.time / 60) : p.time,
-              rest: isTimeStructured ? 0 : p.rest,
-              waterBreak: isTimeStructured
-                ? (hyd > 0 ? Math.floor(hyd / 60) : Math.floor(restSec / 60))
-                : (p.hydration || 0)
-            }
-          }))
-        }
-
-        fetchWorkoutTimeSummary(master.id)
+      if (!response.data.success) {
+        toast.error('기록 상세 조회에 실패했습니다.')
+        return
       }
+
+      const { master: m, details, plans } = response.data.data
+      if (!m?.id) {
+        toast.error('운동 기록 정보를 찾을 수 없습니다.')
+        return
+      }
+
+      const detailRows = Array.isArray(details) ? details : []
+      console.log('[Totalexercises] 프로시저 반환값:', {
+        procedure: procedureName,
+        master: m,
+        detailsCount: detailRows.length,
+        plansCount: Array.isArray(plans) ? plans.length : 0
+      })
+
+      // Reset state before loading new data (검증 통과 후에만 초기화)
+      resetEditorState()
+      setActiveTab('main')
+
+      setRightSelectedDate(dayjs(m.date))
+      setMemo(m.memo || '')
+      // workout_categories_id를 문자열로 변환하여 select value와 매칭
+      const foundCat = m.workout_categories_id ? workoutCategories.find(c =>
+        c.id?.toString() === String(m.workout_categories_id) ||
+        c.minor_category === String(m.workout_categories_id) ||
+        c.major_category === String(m.workout_categories_id)
+      ) : null
+
+      const categoryValue = foundCat ? foundCat.major_category : (m.workout_categories_id ? String(m.workout_categories_id) : '운동선택')
+      setRightExerciseType(categoryValue)
+      setCircuitType(m.method_type || 'stress')
+
+      const isAdminRecord = !!(m.is_admin ?? master.is_admin)
+      if (isAdminRecord && !isSystemAdmin) {
+        setCurrentEditingMasterId(null)
+        setOriginalDate(null)
+        setOriginalCategory(null)
+        setOriginalCircuitType(null)
+        setIsAdmin(false)
+        toast.success('관리자 운동을 불러왔습니다. 저장 시 나의 운동으로 복사됩니다.')
+      } else {
+        setCurrentEditingMasterId(m.id)
+        setOriginalDate(dayjs(m.date).format('YYYY-MM-DD'))
+        setOriginalCategory(categoryValue)
+        setOriginalCircuitType(m.method_type || m.circuit_type || null)
+        setIsAdmin(isSystemAdmin ? isAdminRecord : false)
+      }
+
+      const loadedEx: Exercise[] = []
+      const loadedDS: Exercise[] = []
+      const loadedCD: Exercise[] = []
+
+      const loadedMethodType = m.method_type || m.circuit_type || 'stress'
+      const defaultRepsForLoad = resolveDefaultRepsFromSettings(
+        categoryValue,
+        loadedMethodType,
+        workoutSettings,
+      )
+
+      detailRows.forEach((d: any, index: number) => {
+        // major_category를 대소문자 구분 없이 비교
+        const majorCat = d.major_category ? String(d.major_category).toUpperCase() : null
+
+        const ex: Exercise = {
+          id: `applied-${m.id}-${d.exercises_id}-${index}`,
+          originalExerciseId: d.exercises_id,
+          name_ko: d.exercise_name || d.name_ko || d.exercise_name_ko || '',
+          name_en: d.video_title || d.exercise_name_en || d.name_en || '',
+          level: d.level || 'beginner',
+          target_muscles: d.target_muscles || '',
+          characteristics: d.characteristics || '',
+          equipment: d.equipment || '',
+          purpose: d.description || d.purpose || '',
+          duration: d.duration || 30,
+          video_url: d.video_url || '',
+          major_category: majorCat || '',
+          major_category_name: d.major_category_name || '',
+          workout_category_id: d.workout_category_id || d.workoutCategoryId || d.exercise_type || null,
+          position: d.position || '',
+          reps:
+            categoryValue === 'AMRAP' || categoryValue === 'EMOM' || categoryValue === 'MAIN'
+              ? (d.reps || defaultRepsForLoad)
+              : (d.reps || 0)
+        }
+
+        const isDynamic = majorCat === 'DS'
+        const isCoolDown = majorCat === 'CD'
+
+        if (isDynamic) {
+          loadedDS.push(ex)
+        } else if (isCoolDown) {
+          loadedCD.push(ex)
+        } else {
+          loadedEx.push(ex)
+        }
+      })
+
+      setExercises(reorderPositions(sortExercisesByPosition(loadedEx), 'main'))
+      setDynamicExercises(reorderPositions(sortExercisesByPosition(loadedDS), 'dynamic'))
+      setCoolDownExercises(reorderPositions(sortExercisesByPosition(loadedCD), 'cooldown'))
+
+      try {
+        const profile = await fetchWorkoutMonitorDisplayProfile(String(m.id))
+        setWorkoutMonitorDisplay(profile)
+      } catch (err) {
+        console.warn('[Totalexercises] monitor display load failed', err)
+        setWorkoutMonitorDisplay(emptyMonitorProfile())
+      }
+
+      if (Array.isArray(plans) && plans.length > 0) {
+        const cat = workoutCategories.find(c => c.id?.toString() === m.workout_categories_id)
+        const major = cat?.major_category || m.major_category || String(m.workout_categories_id || '')
+        const isTimeStructured = major === 'AMRAP' || major === 'EMOM'
+        setPanelRows(plans.map((p: any) => {
+          const hyd = Number(p.hydration ?? 0)
+          const restSec = Number(p.rest ?? 0)
+          return {
+            id: `${Date.now()}_${p.round}_${Math.random()}`,
+            round: p.round,
+            time: isTimeStructured ? Math.floor(p.time / 60) : p.time,
+            rest: isTimeStructured ? 0 : p.rest,
+            waterBreak: isTimeStructured
+              ? (hyd > 0 ? Math.floor(hyd / 60) : Math.floor(restSec / 60))
+              : (p.hydration || 0)
+          }
+        }))
+      }
+
+      fetchWorkoutTimeSummary(String(m.id))
     } catch (error) {
       console.error('Load Detail Error:', error)
       toast.error('기록 로드 중 오류가 발생했습니다.')
@@ -625,21 +684,9 @@ export default function Totalexercises() {
   }
 
   const sortExercisesByPosition = (list: Exercise[]) => {
-    return [...list].sort((a, b) => {
-      const getVal = (pos?: string) => {
-        if (!pos) return 999
-        const m = pos.match(/([A-Z]+)(\d+)/)
-        if (!m) {
-          const n = parseInt(pos)
-          return isNaN(n) ? 999 : n
-        }
-        const p = m[1], n = parseInt(m[2])
-        if (p === 'DS' || p === 'CD') return n
-        const group = Math.floor((n - 1) / 3) * 2 + (p === 'R' ? 1 : 0)
-        return group * 3 + ((n - 1) % 3)
-      }
-      return getVal(a.position) - getVal(b.position)
-    })
+    return [...list].sort(
+      (a, b) => getMainPositionSortValue(a.position) - getMainPositionSortValue(b.position),
+    )
   }
 
   const reorderPositions = (list: Exercise[], type: 'main' | 'dynamic' | 'cooldown') => {
@@ -650,9 +697,7 @@ export default function Totalexercises() {
       } else if (type === 'cooldown') {
         position = `CD${idx + 1}`
       } else {
-        const prefix = Math.floor(idx / 3) % 2 === 0 ? 'L' : 'R'
-        const num = Math.floor(idx / 6) * 3 + (idx % 3) + 1
-        position = `${prefix}${num}`
+        position = positionFromMainIndex(idx)
       }
       return { ...ex, position }
     })
@@ -703,13 +748,27 @@ export default function Totalexercises() {
             (originalCircuitType || '').toLowerCase() !== (circuitType || '').toLowerCase()))
           ? null
           : currentEditingMasterId,
-      isAdmin,
+      isAdmin: isSystemAdmin && isAdmin,
       dsCategoryId: dsCategory?.id,
       cdCategoryId: cdCategory?.id,
       majorCategory, // 운동시간 요약 계산을 위해 전달
       circuitType, // 운동시간 요약 계산을 위해 전달 (MAIN일 때만 사용)
-      onSuccess: (savedId: string) => {
+      onSuccess: async (savedId: string) => {
+        const targetMasterId = savedId || currentEditingMasterId
+        if (!targetMasterId) {
+          toast.error('저장 ID를 확인할 수 없어 이미지 설정을 저장하지 못했습니다.')
+        } else {
+          try {
+            await saveWorkoutMonitorDisplayProfile(targetMasterId, workoutMonitorDisplay)
+            const profile = await fetchWorkoutMonitorDisplayProfile(targetMasterId)
+            setWorkoutMonitorDisplay(profile)
+          } catch (err) {
+            console.error('[handleSave] workout monitor display save failed', err)
+            toast.error('운동 기록은 저장되었으나 이미지 설정 저장에 실패했습니다.')
+          }
+        }
         toast.success('기록이 저장되었습니다.')
+        setCurrentEditingMasterId(savedId)
         fetchWorkoutTimeSummary(savedId)
         if (rightSelectedDate) setSelectedDate(rightSelectedDate)
         handleSearch(rightSelectedDate)
@@ -751,6 +810,7 @@ export default function Totalexercises() {
     setSavedWorkoutTimeSummary(null)
     setSelectedExercise(null)
     setSelectedPanelRowId(null)
+    setWorkoutMonitorDisplay(emptyMonitorProfile())
   }
 
   const onConfirmDelete = async () => {
@@ -775,14 +835,17 @@ export default function Totalexercises() {
     setRightExerciseType('운동선택')
     setCircuitType('stress')
     setActiveTab('main')
-    setIsAdmin(isUserAdmin) // 관리자인 경우 true로 유지
+    setIsAdmin(false)
 
     resetEditorState()
 
     // 좌측 기록 영역도 기본값으로 되돌림
     setSelectedDate(dayjs())
     setSelectedMasterId(null)
-    // WorkoutHistory 내부 로컬 필터(운동구분/서킷구분)를 초기값(전체)로 되돌리기 위해 리마운트
+    setHistoryExerciseType('전체')
+    setHistoryCircuitType('전체')
+    setMemoFilter('')
+    // WorkoutHistory 내부 탭 상태를 초기값으로 되돌리기 위해 리마운트
     setHistoryResetNonce((v) => v + 1)
   }
 
@@ -794,23 +857,19 @@ export default function Totalexercises() {
   const handleExerciseSelected = (selected: Exercise[]) => {
     const listType = activeTab
 
-    // AMRAP/EMOM일 때 DB 설정값에서 reps 가져오기, 없으면 기본 10
-    const getDefaultReps = () => {
-      if (majorCategory === 'AMRAP' || majorCategory === 'EMOM') {
-        const settings = workoutSettings[majorCategory]
-        if (settings && settings.length > 0 && settings[0].reps) {
-          return settings[0].reps
-        }
-        return 10 // fallback
-      }
-      return undefined
-    }
-    const defaultReps = getDefaultReps()
+    const defaultReps = resolveDefaultRepsFromSettings(
+      majorCategory,
+      circuitType,
+      workoutSettings,
+    )
 
     const updatedSelected = selected.map(ex => ({
       ...ex,
       duration: ex.duration || 30,
-      reps: (majorCategory === 'AMRAP' || majorCategory === 'EMOM') ? (ex.reps || defaultReps) : undefined
+      reps:
+        majorCategory === 'AMRAP' || majorCategory === 'EMOM' || majorCategory === 'MAIN'
+          ? (ex.reps || defaultReps)
+          : undefined
     }))
 
     if (selectedPanelRowForExercise) {
@@ -1074,6 +1133,10 @@ export default function Totalexercises() {
           setSelectedDate={setSelectedDate}
           memoFilter={memoFilter}
           setMemoFilter={setMemoFilter}
+          exerciseType={historyExerciseType}
+          setExerciseType={setHistoryExerciseType}
+          searchCircuitType={historyCircuitType}
+          setSearchCircuitType={setHistoryCircuitType}
           workoutMasters={workoutMasters}
           adminWorkoutMasters={adminWorkoutMasters}
           categories={workoutCategories}
@@ -1144,10 +1207,13 @@ export default function Totalexercises() {
           onDeleteRecord={handleDeleteRecord}
           handleCancel={handleCancel}
           handleReset={handleReset}
-          isAdmin={isAdmin}
+          isAdmin={isSystemAdmin && isAdmin}
           setIsAdmin={setIsAdmin}
           currentEditingMasterId={currentEditingMasterId}
           originalCircuitType={originalCircuitType}
+          workoutMonitorDisplay={workoutMonitorDisplay}
+          onWorkoutMonitorDisplayChange={setWorkoutMonitorDisplay}
+          defaultRepsFromSettings={defaultRepsFromSettings}
         />
       </div>
 

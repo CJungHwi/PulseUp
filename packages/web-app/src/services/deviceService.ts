@@ -320,6 +320,29 @@ export const playPrevious = async (deviceId: string): Promise<any> => {
   return sendDeviceCommand(deviceId, 'play-previous', {})
 }
 
+/** 인트로 시작 */
+export const playIntro = async (deviceId: string): Promise<{ success?: boolean }> => {
+  return sendDeviceCommand(deviceId, 'play-intro', {})
+}
+
+/** 인트로 취소 — 준비(프리뷰) 화면으로 복귀 */
+export const cancelIntro = async (deviceId: string): Promise<{ success?: boolean }> => {
+  return sendDeviceCommand(deviceId, 'cancel-intro', {})
+}
+
+/** 인트로 선택보기 — A/B/C + 번호로 하단 확대 재생 */
+export const sendIntroFocus = async (
+  deviceId: string,
+  payload: { zone: string; number: number; positionCode?: string },
+): Promise<{ success?: boolean; positionCode?: string }> => {
+  return sendDeviceCommand(deviceId, 'intro-focus', payload)
+}
+
+/** 인트로 선택보기 취소 — 하단 이미지 복원 및 선택 해제 */
+export const sendIntroFocusCancel = async (deviceId: string): Promise<{ success?: boolean }> => {
+  return sendDeviceCommand(deviceId, 'intro-focus-cancel', {})
+}
+
 /**
  * Electron 앱의 현재 운동 로그를 서버로 전송
  */

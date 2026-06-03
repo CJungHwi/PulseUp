@@ -12,6 +12,7 @@ const mapCircuitMainDetail = (ex: Exercise) => ({
     position: ex.position,
     exercise_type: 'MAIN',
     duration: ex.duration,
+    reps: ex.reps ?? 0,
 })
 
 const mapAmrapMainDetail = (ex: Exercise) => ({

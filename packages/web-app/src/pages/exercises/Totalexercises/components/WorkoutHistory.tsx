@@ -1,3 +1,12 @@
+/**
+ * 컴포넌트 요약 — 트레이닝 기록 조회 (Totalexercises 좌측 패널)
+ *
+ * 기능: 년월·운동구분·서킷·메모 필터, 사용자/관리자 탭, 기록 더블클릭 적용.
+ * API: `GET /workout-categories/workout-history-master` (필터는 부모 Totalexercises에서 호출)
+ *
+ * MonthProgram과 동일하게 사용자/관리자 탭을 항상 노출하고, 목록은 API 결과를 그대로 표시한다.
+ */
+
 import React, { useMemo, useState } from 'react'
 import { ClipboardList } from 'lucide-react'
 import dayjs, { Dayjs } from 'dayjs'
@@ -35,6 +44,10 @@ interface WorkoutHistoryProps {
     setSelectedDate: (date: Dayjs | null) => void
     memoFilter: string
     setMemoFilter: (val: string) => void
+    exerciseType: string
+    setExerciseType: (val: string) => void
+    searchCircuitType: string
+    setSearchCircuitType: (val: string) => void
     workoutMasters: WorkoutMaster[]
     adminWorkoutMasters?: WorkoutMaster[]
     categories: any[]
@@ -51,6 +64,10 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
     setSelectedDate,
     memoFilter,
     setMemoFilter,
+    exerciseType,
+    setExerciseType,
+    searchCircuitType,
+    setSearchCircuitType,
     workoutMasters,
     adminWorkoutMasters = [],
     categories,
@@ -62,10 +79,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
     width
 }) => {
     const { user } = useAppSelector((state) => state.auth)
-    const isUserAdmin = user?.role === 'branch_admin' || user?.role === 'super_admin'
-    const [exerciseType, setExerciseType] = useState('전체')
-    const [searchCircuitType, setSearchCircuitType] = useState('전체')
-    const [recordTabValue, setRecordTabValue] = useState(isUserAdmin ? 1 : 0)
+    const [recordTabValue, setRecordTabValue] = useState(0)
 
     const normalizeMajor = (value?: string) => value?.toString().trim().toUpperCase() || ''
 
@@ -81,50 +95,16 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
         )
     }
 
-    // DS/CD 계열은 제외 + 활성화된 카테고리만 노출
+    // DS/CD 계열은 운동구분 선택 목록에서만 제외 (MonthProgram과 동일하게 목록 자체는 API 결과 그대로)
     const filteredCategories = useMemo(() => {
         return (categories || []).filter((cat) => {
             if (!cat) return false
             const majorCat = normalizeMajor(cat.major_category)
             const isActive = cat.is_active === 1 || cat.is_active === '1' || cat.is_active === true
-            // major_category가 없으면 필터링하지 않음 (보여줌)
             if (!majorCat) return true
             return !isStretchingMajor(majorCat) && isActive
         })
     }, [categories])
-
-    const filterMasterList = (masters: WorkoutMaster[]) => {
-        return masters.filter((m) => {
-            const major = normalizeMajor(m.majorCategory) || normalizeMajor(m.workoutCategoriesId) || normalizeMajor(m.workoutCategoriesName)
-
-            if (isStretchingMajor(major)) return false
-
-            if (exerciseType !== '전체') {
-                const selectedMajor = normalizeMajor(exerciseType)
-                const masterMajor = normalizeMajor(m.majorCategory) || normalizeMajor(m.workoutCategoriesName)
-                if (masterMajor !== selectedMajor) return false
-            }
-
-            if (searchCircuitType !== '전체' && m.circuitType !== searchCircuitType) return false
-
-            if (memoFilter) {
-                const memo = m.memo?.toLowerCase() || ''
-                if (!memo.includes(memoFilter.toLowerCase())) return false
-            }
-
-            return true
-        })
-    }
-
-    const filteredMasters = useMemo(
-        () => filterMasterList(workoutMasters),
-        [exerciseType, memoFilter, searchCircuitType, workoutMasters]
-    )
-
-    const filteredAdminMasters = useMemo(
-        () => filterMasterList(adminWorkoutMasters),
-        [exerciseType, memoFilter, searchCircuitType, adminWorkoutMasters]
-    )
 
     const renderMasterTable = (masters: WorkoutMaster[], loading: boolean) => (
         <div className="flex-1 min-h-0 overflow-auto relative bg-[#f9fafb] dark:bg-[#1d1d1d] border border-[#343637] dark:border-[#6b7280] border-t-0 overscroll-behavior-contain touch-pan-y">
@@ -266,11 +246,8 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
                     </div>
                 </div>
 
-                {/* Top: Master List with Tabs */}
+                {/* 사용자 / 관리자 탭 — MonthProgram과 동일하게 항상 노출 */}
                 <div className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col">
-                    {isUserAdmin ? (
-                        renderMasterTable(filteredAdminMasters, isLoadingAdmin)
-                    ) : (
                     <ShadcnTabs
                         value={recordTabValue.toString()}
                         onValueChange={(val) => setRecordTabValue(parseInt(val))}
@@ -292,14 +269,13 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
                         </TabsList>
 
                         <TabsContent value="0" className="flex-1 min-h-0 !m-0 !p-0 overflow-hidden flex flex-col">
-                            {renderMasterTable(filteredMasters, isLoading)}
+                            {renderMasterTable(workoutMasters, isLoading)}
                         </TabsContent>
 
                         <TabsContent value="1" className="flex-1 min-h-0 !m-0 !p-0 overflow-hidden flex flex-col">
-                            {renderMasterTable(filteredAdminMasters, isLoadingAdmin)}
+                            {renderMasterTable(adminWorkoutMasters, isLoadingAdmin)}
                         </TabsContent>
                     </ShadcnTabs>
-                    )}
                 </div>
             </CardContent>
         </Card>

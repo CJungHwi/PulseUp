@@ -1,14 +1,21 @@
 import {
+  getIntroSlotDefaultLabel,
+} from '../circuits/intro-position-codes.js'
+import {
   INTRO_VIDEO_GRID_HEIGHT,
   buildIntroVideoCellDividerStyle,
   buildWorkoutGridIntroImageSection,
 } from './workout-grid-intro-layout.js'
+
+export type WorkoutGridShellSide = 'left' | 'left-2' | 'right' | 'right-2'
 
 export const createWorkoutGridCells = (
   prefix: string,
   count: number = 3,
   isIntro: boolean = false,
   isStretching: boolean = false,
+  side: WorkoutGridShellSide = 'left',
+  introFiveScreen: boolean = false,
 ): string => {
   const positionAlign = 'left: 15px;'
   return Array.from({ length: count }, (_, i) => i + 1)
@@ -17,6 +24,7 @@ export const createWorkoutGridCells = (
       const cellFrameStyle = isIntro
         ? buildIntroVideoCellDividerStyle(slotNum)
         : 'border: 3px solid #444; border-radius: 12px;'
+      const slotLabel = isIntro ? getIntroSlotDefaultLabel(side, slotNum, { fiveScreen: introFiveScreen }) : `${prefix}${slotNum}`
       return `
       <div 
         id="video-slot-${prefix}${slotNum}" 
@@ -44,7 +52,7 @@ export const createWorkoutGridCells = (
           text-align: center;
           z-index: 1;
         ">
-          <div style="font-size: 64px; font-weight: bold; color: #555;">${prefix}${slotNum}</div>
+          <div style="font-size: 64px; font-weight: bold; color: #555;">${slotLabel}</div>
           <div style="font-size: 18px; margin-top: 15px; color: #777; letter-spacing: 2px;">READY</div>
         </div>
         <div class="video-container" style="width: 100%; height: 100%; display: none; position: relative; z-index: 2;"></div>
@@ -60,7 +68,7 @@ export const createWorkoutGridCells = (
           font-family: 'Arial Black', sans-serif;
           z-index: 4;
           ${isIntro ? 'display: block;' : 'display: none;'}
-        ">${prefix}${slotNum}</div>
+        ">${slotLabel}</div>
         <div class="reps-badge" id="reps-badge-${prefix}${slotNum}" style="
           position: absolute;
           top: 15px;
@@ -81,21 +89,20 @@ export const createWorkoutGridCells = (
     .join('')
 }
 
-export type WorkoutGridShellSide = 'left' | 'left-2' | 'right' | 'right-2'
-
 export type WorkoutGridShellParams = {
   side: WorkoutGridShellSide
   isIntro: boolean
   introImageUrl?: string
   stretchingSlotCount: number
+  introFiveScreen?: boolean
 }
 
 export const buildWorkoutGridShellHtml = (p: WorkoutGridShellParams): string => {
   const prefix: 'L' | 'R' = p.side === 'left' || p.side === 'left-2' ? 'L' : 'R'
   const gridCols = p.isIntro ? 'repeat(2, 1fr)' : '1fr'
-  const introImageSection = buildWorkoutGridIntroImageSection(p.isIntro, p.introImageUrl)
-  const slotCount = p.isIntro ? 6 : p.stretchingSlotCount > 0 ? p.stretchingSlotCount : 3
-  const gridCellsHtml = createWorkoutGridCells(prefix, slotCount, p.isIntro, p.stretchingSlotCount > 0)
+  const introImageSection = buildWorkoutGridIntroImageSection(p.side, p.isIntro, p.introImageUrl)
+  const slotCount = p.isIntro ? (p.introFiveScreen ? 3 : 6) : p.stretchingSlotCount > 0 ? p.stretchingSlotCount : 3
+  const gridCellsHtml = createWorkoutGridCells(prefix, slotCount, p.isIntro, p.stretchingSlotCount > 0, p.side, !!p.introFiveScreen)
 
   return `
       <style>

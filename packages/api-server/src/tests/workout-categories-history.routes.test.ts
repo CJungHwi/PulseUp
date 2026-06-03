@@ -24,7 +24,13 @@ const executeQueryMock = vi.fn()
 vi.mock('../lib/database.js', () => {
   return {
     callProcedure: (...args: any[]) => callProcedureMock(...args),
-    executeQuery: (...args: any[]) => executeQueryMock(...args)
+    executeQuery: (...args: any[]) => executeQueryMock(...args),
+    executeTransaction: vi.fn(),
+    unwrapProcedureRows: (result: any) => (Array.isArray(result?.[0]) ? result[0] : []),
+    unwrapProcedureFirstRow: (result: any) => (Array.isArray(result?.[0]) ? result[0][0] ?? null : null),
+    unwrapProcedureResultSetAt: (result: any, index: number) => (
+      Array.isArray(result?.[index]) ? result[index] : []
+    )
   }
 })
 
@@ -40,12 +46,10 @@ describe('Workout Categories History Routes', () => {
     executeQueryMock.mockReset()
   })
 
-  it('GET /api/workout-categories/workout-history-master should call procedure and return rows', async () => {
-    callProcedureMock.mockResolvedValueOnce([
-      [
-        { id: 'm1', date: '2025-12-01', memo: 'a' },
-        { id: 'm2', date: '2025-12-02', memo: 'b' }
-      ]
+  it('GET /api/workout-categories/workout-history-master should query and return rows', async () => {
+    executeQueryMock.mockResolvedValueOnce([
+      { id: 'm1', date: '2025-12-01', memo: 'a', is_admin: 0 },
+      { id: 'm2', date: '2025-12-02', memo: 'b', is_admin: 0 }
     ])
 
     const response = await request(app)
@@ -54,15 +58,10 @@ describe('Workout Categories History Routes', () => {
       .set('Authorization', 'Bearer fake-token')
       .expect(200)
 
-    expect(callProcedureMock).toHaveBeenCalledTimes(1)
-    expect(callProcedureMock).toHaveBeenCalledWith('sp_GetWorkoutHistoryMaster', [
-      'test-user-id',
-      '2025-12',
-      null,
-      null,
-      null,
-      null
-    ])
+    expect(executeQueryMock).toHaveBeenCalledTimes(1)
+    const [sql, params] = executeQueryMock.mock.calls[0]
+    expect(sql).toContain('FROM workout_history_master whm')
+    expect(params).toEqual(['test-user-id', '2025-12'])
 
     expect(response.body.success).toBe(true)
     expect(Array.isArray(response.body.data)).toBe(true)
@@ -77,7 +76,7 @@ describe('Workout Categories History Routes', () => {
       .expect(400)
 
     expect(response.body).toHaveProperty('error')
-    expect(callProcedureMock).not.toHaveBeenCalled()
+    expect(executeQueryMock).not.toHaveBeenCalled()
   })
 
   it('GET /api/workout-categories/workout-exercises/:masterId should call procedure and return rows', async () => {

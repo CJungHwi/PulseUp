@@ -434,6 +434,13 @@ export class WebSocketRelay {
       null
 
     const workoutLogFiles = fileLogger.collectCurrentWorkoutSessionLogs(masterId)
+    if (workoutLogFiles.length === 0) {
+      return {
+        success: false,
+        error: '전송할 세션 로그가 없습니다. 인트로 또는 운동 시작 버튼을 누른 뒤 다시 시도해 주세요.',
+      }
+    }
+
     const files = [
       ...workoutLogFiles,
       this.createHeartRateDiagnosticsLogFile(),
@@ -522,10 +529,6 @@ export class WebSocketRelay {
 
       switch (command) {
         case 'start-workout-play':
-          fileLogger.beginWorkoutLogSession({
-            masterId: commandData?.masterId,
-            userId: commandData?.userId,
-          })
           const playResult = await this.ipcHandlers.handleWorkoutPlay(commandData)
           return { success: playResult.success, data: playResult, error: playResult.error }
 
@@ -556,6 +559,37 @@ export class WebSocketRelay {
         case 'play-intro':
           const introResult = await this.ipcHandlers.handlePlayIntro()
           return { success: introResult.success, data: introResult, error: introResult.error }
+
+        case 'cancel-intro': {
+          const cancelIntroResult = this.ipcHandlers.handleCancelIntro()
+          return {
+            success: cancelIntroResult.success,
+            data: cancelIntroResult,
+            error: cancelIntroResult.error,
+          }
+        }
+
+        case 'intro-focus': {
+          const focusResult = this.ipcHandlers.handleIntroFocus({
+            zone: commandData?.zone,
+            number: commandData?.number,
+            positionCode: commandData?.positionCode,
+          })
+          return {
+            success: focusResult.success,
+            data: focusResult,
+            error: focusResult.error,
+          }
+        }
+
+        case 'intro-focus-cancel': {
+          const cancelResult = this.ipcHandlers.handleIntroFocusCancel()
+          return {
+            success: cancelResult.success,
+            data: cancelResult,
+            error: cancelResult.error,
+          }
+        }
 
         case 'session-status':
           const status = await this.ipcHandlers.handleGetSessionStatus()

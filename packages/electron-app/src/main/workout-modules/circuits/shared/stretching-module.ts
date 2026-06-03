@@ -1,5 +1,10 @@
 import type { WorkoutModuleContext, WorkoutModule, ActiveSet } from './base-module'
 import { log } from './base-module'
+import {
+  GRID_FIRST_HALF_PREFIX,
+  parseGridPosition,
+} from '../../../../common/grid-position-codes.js'
+import { isSecondMainHalfPosition } from './main-half-group-utils'
 import { preloadMainRoundGroup } from './main-round-preload'
 import { preloadStretchingRoundGroup } from './stretching-preload'
 
@@ -82,7 +87,7 @@ export class StretchingModule implements WorkoutModule {
   }
 
   /**
-   * Loop/EMOM에서 후반전(L4-L6) 운동은 전반전과 다른 라운드에 저장되므로,
+   * Loop/EMOM에서 후반전(B*) 운동은 전반전(A*)과 다른 라운드에 저장되므로,
    * round 1 group 1 으로는 선로딩이 안 됨 → 첫 후반전 라운드를 찾아 반환.
    */
   private findFirstBackHalfRound(ctx: WorkoutModuleContext): number | null {
@@ -95,8 +100,7 @@ export class StretchingModule implements WorkoutModule {
         seq.exercise_name !== '임시운동' &&
         seq.duration > 0
       ) {
-        const m = String(seq.position || '').match(/^[LR](\d+)$/i)
-        if (m && parseInt(m[1], 10) >= 4) {
+        if (isSecondMainHalfPosition(String(seq.position || ''))) {
           return seq.round
         }
       }
@@ -141,13 +145,9 @@ export class StretchingModule implements WorkoutModule {
     // 첫 그룹 시작 시 모든 그룹 영상을 한번에 broadcast → 렌더러에서 6슬롯에 모두 로드
     const allPositionGroups: { [key: string]: any[] } = {}
     allNormalized.forEach((item, idx) => {
-      const slotIndex = idx + 1
-      const leftPos = `L${slotIndex}`
-      const rightPos = `R${slotIndex}`
-      if (!allPositionGroups[leftPos]) allPositionGroups[leftPos] = []
-      if (!allPositionGroups[rightPos]) allPositionGroups[rightPos] = []
-      allPositionGroups[leftPos].push(item)
-      allPositionGroups[rightPos].push(item)
+      const pos = `${GRID_FIRST_HALF_PREFIX}${idx + 1}`
+      if (!allPositionGroups[pos]) allPositionGroups[pos] = []
+      allPositionGroups[pos].push(item)
     })
 
     const activeSet: ActiveSet = { left: 'set1', right: 'set1' }
@@ -240,17 +240,12 @@ export class StretchingModule implements WorkoutModule {
         })
       }
 
-      // 렌더러 호환용: 현재 그룹의 L1-L3/R1-R3 매핑
-      const currentLegacyGroups = {
-        L1: [] as any[], L2: [] as any[], L3: [] as any[],
-        R1: [] as any[], R2: [] as any[], R3: [] as any[]
-      }
+      // 렌더러 호환용: 현재 그룹의 A1-A3/B1-B3 매핑
+      const currentLegacyGroups: Record<string, any[]> = {}
       normalizedGroup.forEach((item, idx) => {
-        const slotIdx = idx % 3
-        const lp = `L${slotIdx + 1}` as keyof typeof currentLegacyGroups
-        const rp = `R${slotIdx + 1}` as keyof typeof currentLegacyGroups
-        currentLegacyGroups[lp].push(item)
-        currentLegacyGroups[rp].push(item)
+        const pos = `${GRID_FIRST_HALF_PREFIX}${groupOffset + idx + 1}`
+        if (!currentLegacyGroups[pos]) currentLegacyGroups[pos] = []
+        currentLegacyGroups[pos].push(item)
       })
 
       ctx.setStretchingGroupIndex(currentGroupIndex)
@@ -283,14 +278,15 @@ export class StretchingModule implements WorkoutModule {
    */
   private executeStretchingGroupSequence(
     ctx: WorkoutModuleContext,
-    positionGroups: { L1: any[], L2: any[], L3: any[], R1: any[], R2: any[], R3: any[] },
+    positionGroups: Record<string, any[]>,
     currentGroupIndex: number,
     groups: any[][],
     totalStretchingExercises: number,
     onComplete: () => void
   ) {
     let currentPositionIndex = 0
-    const positions = ['L1', 'L2', 'L3'] as const
+    const groupOffset = groups.slice(0, currentGroupIndex).reduce((s, g) => s + g.length, 0)
+    const positions = [1, 2, 3].map((i) => `${GRID_FIRST_HALF_PREFIX}${groupOffset + i}`)
 
     const executeNextPosition = () => {
       if (this.stopped) return
@@ -317,8 +313,12 @@ export class StretchingModule implements WorkoutModule {
         position: currentPosition
       })
 
-      const groupOffset = groups.slice(0, currentGroupIndex).reduce((s, g) => s + g.length, 0)
-      const currentStretchingIndex = groupOffset + currentPositionIndex + 1
+      const groupOffsetForIndex = groups.slice(0, currentGroupIndex).reduce((s, g) => s + g.length, 0)
+      const currentStretchingIndex = groupOffsetForIndex + currentPositionIndex + 1
+
+      const posNum = parseInt(currentPosition.slice(1), 10)
+      const mirroredNum = posNum <= 3 ? posNum + 3 : posNum
+      const mirroredPosition = `${GRID_FIRST_HALF_PREFIX}${mirroredNum}`
 
       // 타이머 업데이트 + 활성 포지션 변경 명령 (영상은 유지)
       ctx.broadcastToAllWindows('workout-play-sequence', {
@@ -334,7 +334,7 @@ export class StretchingModule implements WorkoutModule {
         stretchingMode: true,
         positionGroups: positionGroups,
         currentStretchingPosition: currentPosition,
-        mirroredPosition: `R${currentPosition.charAt(1)}`,
+        mirroredPosition,
         currentStretchingIndex,
         totalStretchingExercises
       })

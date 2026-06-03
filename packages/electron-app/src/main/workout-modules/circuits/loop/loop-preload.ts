@@ -1,11 +1,10 @@
 import type { WorkoutModuleContext } from '../shared/base-module'
 import { log } from '../shared/base-module'
 import { PreloadManager } from '../shared/preload-manager'
+import { collectMainHalfGroupExercises, getMainHalfGroupIndexFromPosition } from '../shared/main-half-group-utils'
 import { buildTimelineForLoop, getPreloadWindow } from '../shared/timeline-utils'
 
-/**
- * Stress와 동일한 패턴: 타임라인 프리로드 + 다음 그룹 6슬롯 + CD 프리로드
- */
+/** Stress와 동일한 패턴: 타임라인 프리로드 + 다음 A/B 그룹 6슬롯 + CD 프리로드 */
 export const preloadLoopFromTimeline = (ctx: WorkoutModuleContext, currentIndex: number): void => {
   if (!ctx.activePlaySession) return
   try {
@@ -32,29 +31,12 @@ export const preloadLoopFromTimeline = (ctx: WorkoutModuleContext, currentIndex:
 const collectGroupSequences = (
   ctx: WorkoutModuleContext,
   currentGroupIndex: number,
-): any[] => {
-  const nextGroupBase = (currentGroupIndex + 1) * 3 + 1
-  const nextGroupPositions = new Set<string>()
-  for (let i = 0; i < 3; i++) {
-    nextGroupPositions.add(`L${nextGroupBase + i}`)
-    nextGroupPositions.add(`R${nextGroupBase + i}`)
-  }
-  const nextPosMap = new Map<string, any>()
-  for (const seq of ctx.activePlaySession!.sequences) {
-    if (
-      seq.round > 0 &&
-      seq.round < 99 &&
-      seq.exercise_type === 'exercise' &&
-      nextGroupPositions.has(seq.position || '') &&
-      !nextPosMap.has(seq.position || '')
-    ) {
-      nextPosMap.set(seq.position || '', seq)
-    }
-  }
-  return Array.from(nextPosMap.values())
-}
+): any[] =>
+  Array.from(
+    collectMainHalfGroupExercises(ctx.activePlaySession!.sequences, currentGroupIndex + 1).values(),
+  )
 
-/** 다음 전·후반 그룹(6포지션) 영상 프리로드 — Stress preloadNextStressGroup 와 동일 구조 */
+/** 다음 A/B 그룹(6포지션) 영상 프리로드 — Stress preloadNextStressGroup 와 동일 구조 */
 export const preloadNextLoopGroup = (
   ctx: WorkoutModuleContext,
   loopGroupIndex: number,
@@ -105,28 +87,11 @@ export const preloadNextLoopGroupDuringWater = (
   )
   if (!nextExercise) return
 
-  const nextPosMatch = (nextExercise.position || '').match(/^[LR](\d+)$/)
-  const nextPosNum = nextPosMatch ? parseInt(nextPosMatch[1], 10) : 1
-  const nextLoopGroupIndex = Math.floor((nextPosNum - 1) / 3)
-  const nextGroupBase = nextLoopGroupIndex * 3 + 1
-  const nextGroupPositions = new Set<string>()
-  for (let i = 0; i < 3; i++) {
-    nextGroupPositions.add(`L${nextGroupBase + i}`)
-    nextGroupPositions.add(`R${nextGroupBase + i}`)
-  }
-
-  const nextPosMap = new Map<string, any>()
-  for (const seq of ctx.activePlaySession!.sequences) {
-    if (
-      seq.round > 0 &&
-      seq.round < 99 &&
-      seq.exercise_type === 'exercise' &&
-      nextGroupPositions.has(seq.position || '') &&
-      !nextPosMap.has(seq.position || '')
-    ) {
-      nextPosMap.set(seq.position || '', seq)
-    }
-  }
+  const nextLoopGroupIndex = getMainHalfGroupIndexFromPosition(nextExercise.position || '')
+  const nextPosMap = collectMainHalfGroupExercises(
+    ctx.activePlaySession!.sequences,
+    nextLoopGroupIndex,
+  )
 
   const nextActiveSet = {
     left: nextLoopGroupIndex > 0 ? 'set2' : 'set1',

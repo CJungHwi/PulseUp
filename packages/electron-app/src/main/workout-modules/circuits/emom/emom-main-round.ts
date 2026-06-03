@@ -10,6 +10,7 @@ import {
   sortEmomDisplaySequences,
 } from './emom-constants'
 import { getHalfRoundsCountFromSession } from '../shared/half-rounds-meta'
+import { DEFAULT_GRID_POSITION } from '../../../../common/grid-position-codes.js'
 import {
   preloadCoolDownForEmom,
   preloadEmomCurrentRoundGrid,
@@ -82,7 +83,7 @@ export const runEmomMainRound = (
 
   if (!isFiveScreenMode) {
     preloadEmomFromTimeline(ctx, currentIndex)
-    // 전반: L4–6 블록 선로드. 후반에서 emomGroupIndex=1을 넘기면 (1+1)*3+1=7 로 잡혀 빈 프리로드만 됨
+    // 전반(A*)에서 후반(B*) 블록을 미리 로드한다. 후반에서는 다음 블록이 없어 생략.
     if (emomGroupIndex === 0) {
       preloadNextEmomGroup(ctx, 0, currentRound)
     }
@@ -160,7 +161,7 @@ export const runEmomMainRound = (
         round: currentRound,
         totalRounds: ctx.activePlaySession.totalRounds,
         duration: stepSec,
-        position: seq.position || 'L1',
+        position: seq.position || DEFAULT_GRID_POSITION,
         activeSet,
         sequenceIndex,
         totalSequences: ctx.activePlaySession.sequences.length,

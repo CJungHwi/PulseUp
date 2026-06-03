@@ -31,12 +31,15 @@ export const buildIntroVideoCellDividerStyle = (slotNum: number): string => {
 }
 
 export const buildWorkoutGridIntroImageSection = (
+  side: string,
   isIntro: boolean,
   introImageUrl: string | undefined,
 ): string => {
-  if (isIntro && introImageUrl) {
-    return `<div style="${INTRO_IMAGE_CONTAINER_STYLE}">
-           <img
+  if (!isIntro) return ''
+
+  const staticImageInner = introImageUrl
+    ? `<img
+             id="intro-static-image-${side}"
              src="${introImageUrl}"
              alt="Intro Image"
              style="
@@ -46,18 +49,25 @@ export const buildWorkoutGridIntroImageSection = (
                height: 100%;
                object-fit: contain;
              "
-           />
-         </div>`
-  }
-  if (isIntro) {
-    return `<div style="
-             ${INTRO_IMAGE_CONTAINER_STYLE}
+           />`
+    : `<div id="intro-static-image-${side}" style="
+             position: absolute;
+             inset: 0;
              display: flex;
              align-items: center;
              justify-content: center;
            ">
              <span style="color: #555; font-size: 24px; font-family: sans-serif;">No Image</span>
            </div>`
-  }
-  return ''
+
+  return `<div id="intro-bottom-section-${side}" style="${INTRO_IMAGE_CONTAINER_STYLE}">
+           ${staticImageInner}
+           <div id="intro-focus-video-${side}" style="
+             position: absolute;
+             inset: 0;
+             display: none;
+             overflow: hidden;
+             background: #000;
+           "></div>
+         </div>`
 }

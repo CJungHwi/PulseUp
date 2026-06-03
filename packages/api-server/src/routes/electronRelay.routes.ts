@@ -12,6 +12,8 @@ import {
 } from '../services/deviceControlLock.service.js'
 import { authenticateToken, requireLinkageEnabled, type AuthenticatedRequest } from '../middleware/auth.middleware.js'
 
+import { monitorDisplayService } from '../services/monitorDisplay.service.js'
+
 const router = Router()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -174,7 +176,6 @@ const getPublicControlLockStatus = (deviceId: string, controllerId?: string) => 
   }
 }
 
-/** Electron 릴레이 페이로드에 현재 요청 JWT를 실어 보냄(WS 경로는 HTTP 헤더가 없어 토큰이 stale할 수 있음) */
 function mergeRelayJwtPayload(req: AuthenticatedRequest, data: unknown): Record<string, unknown> {
   const base: Record<string, unknown> =
     typeof data === 'object' && data !== null && !Array.isArray(data)
@@ -188,6 +189,28 @@ function mergeRelayJwtPayload(req: AuthenticatedRequest, data: unknown): Record<
     }
   }
   return base
+}
+
+/** Electron resolve API 실패를 줄이기 위해 서버에서 모니터 표시 설정을 미리 resolve */
+async function enrichPlayDataWithMonitorDisplay(
+  userId: string,
+  playData: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const masterId = playData.masterId ? String(playData.masterId) : ''
+  if (!masterId || masterId === 'remote-control') {
+    return playData
+  }
+
+  try {
+    const [initDisplay, introDisplay] = await Promise.all([
+      monitorDisplayService.resolveDisplayConfig({ userId, masterId, context: 'default' }),
+      monitorDisplayService.resolveDisplayConfig({ userId, masterId, context: 'intro' })
+    ])
+    return { ...playData, initDisplay, introDisplay }
+  } catch (error) {
+    console.error('[electron-relay] monitor display pre-resolve failed:', error)
+    return playData
+  }
 }
 
 /** Electron 타이머 MM:SS / 서킷 추적용 — JWT·토큰 필드는 넣지 않음 */
@@ -329,7 +352,16 @@ router.post('/command', authenticateToken, requireLinkageEnabled, async (req: Au
     }
 
     if (command === 'start-workout-play' && data && typeof data === 'object' && !Array.isArray(data)) {
-      logRelayStartWorkoutCircuit('command', deviceId, data as Record<string, unknown>)
+      const playPayload = req.user?.id
+        ? await enrichPlayDataWithMonitorDisplay(String(req.user.id), data as Record<string, unknown>)
+        : (data as Record<string, unknown>)
+      logRelayStartWorkoutCircuit('command', deviceId, playPayload)
+      const result = await ElectronRelayService.sendCommand(
+        deviceId,
+        command,
+        mergeRelayJwtPayload(req, playPayload)
+      )
+      return res.json({ success: true, data: result })
     }
 
     // 명령 전송 및 응답 대기
@@ -648,9 +680,17 @@ router.post('/start-workout-play', authenticateToken, requireLinkageEnabled, asy
       throw error
     }
 
-    logRelayStartWorkoutCircuit('start-workout-play', deviceId, playData as Record<string, unknown>)
+    const enrichedPlayData = user.id
+      ? await enrichPlayDataWithMonitorDisplay(String(user.id), playData as Record<string, unknown>)
+      : (playData as Record<string, unknown>)
 
-    const result = await ElectronRelayService.sendCommand(deviceId, 'start-workout-play', mergeRelayJwtPayload(req, playData))
+    logRelayStartWorkoutCircuit('start-workout-play', deviceId, enrichedPlayData)
+
+    const result = await ElectronRelayService.sendCommand(
+      deviceId,
+      'start-workout-play',
+      mergeRelayJwtPayload(req, enrichedPlayData)
+    )
 
     res.json({
       success: true,

@@ -12,7 +12,7 @@
  * - `MonthProgramMasterTabs`: 사용자/관리자 마스터 테이블 탭
  * - `WorkoutPlanTable`, `WorkoutSummaryTable`: 좌(라운드/세트)·우(요약) 테이블
  * - `WorkoutMemoBar`: 메모 입력
- * - `WorkoutDetailTable`: 운동 상세 정보 + 컬럼 리사이즈
+ * - `WorkoutDetailTable`: 운동 상세 정보(AMRAP/EMOM·stress/loop 횟수) + 컬럼 리사이즈
  * - `ElectronIPDialog`, `CopyConfirmToast`
  * - `useMainSplitter`, `useDetailColumnResize`: 분할/컬럼 리사이즈 훅
  * - `useWorkoutPlay`: Play / 디바이스 선택 / Electron IP 다이얼로그 훅
@@ -159,12 +159,20 @@ const MonthProgram: React.FC = () => {
     setSelectedMaster(master)
     setMemo(master.memo || '')
 
-    const { details, plans } = await fetchWorkoutDetail(master.id)
-    setWorkoutDetails(details)
-    setWorkoutPlans(plans)
+    try {
+      const { details, plans } = await fetchWorkoutDetail(master.id)
+      setWorkoutDetails(details)
+      setWorkoutPlans(plans)
 
-    const sequences = await fetchWorkoutExercises(master.id)
-    setExerciseSequences(sequences)
+      const sequences = await fetchWorkoutExercises(master.id)
+      setExerciseSequences(sequences)
+    } catch (error) {
+      console.error('[MonthProgram] 기록 상세 조회 실패:', error)
+      notify('운동 기록 상세 조회에 실패했습니다.', 'error')
+      setWorkoutDetails([])
+      setWorkoutPlans([])
+      setExerciseSequences([])
+    }
 
     setSelectedPlanId(null)
     setSelectedDetailId(null)

@@ -18,11 +18,14 @@ export interface ElectronLogFilePayload {
 export interface WorkoutLogSessionOptions {
   masterId: string | number
   userId?: string | number | null
+  /** intro / workout-start 버튼 등 세션 구분용 파일명 접미사 */
+  kind?: 'intro' | 'workout-start'
 }
 
 interface WorkoutLogSession {
   masterId: string
   userId?: string
+  kind?: 'intro' | 'workout-start'
   startedAt: string
   filename: string
   filePath: string
@@ -110,16 +113,19 @@ class FileLogger {
 
       const now = new Date()
       const userId = this.toOptionalString(options.userId)
+      const kind = options.kind
       const filename = [
         `log_${this.formatTimestampForFilename(now)}`,
         `master-${this.sanitizeFilenamePart(masterId)}`,
         userId ? `user-${this.sanitizeFilenamePart(userId)}` : null,
+        kind ? kind : null,
       ].filter(Boolean).join('__') + '.txt'
       const filePath = path.join(this.logDir, filename)
 
       const session: WorkoutLogSession = {
         masterId,
         userId: userId || undefined,
+        kind,
         startedAt: now.toISOString(),
         filename,
         filePath,
@@ -141,8 +147,11 @@ class FileLogger {
     if (!session) return []
 
     const expectedMasterId = this.toOptionalString(masterId)
-    if (expectedMasterId && session.masterId !== expectedMasterId) return []
+    if (expectedMasterId && session.masterId !== expectedMasterId) {
+      return []
+    }
 
+    this.flushLogStream()
     const payload = this.readLogPayload(session.filePath, session.filename)
     return payload ? [payload] : []
   }
@@ -174,6 +183,19 @@ class FileLogger {
     this.logStream = null
   }
 
+  /** 디스크 읽기 전 버퍼 flush (로그 보내기 시 누락 방지) */
+  private flushLogStream(): void {
+    if (!this.logStream) return
+    try {
+      const stream = this.logStream as fs.WriteStream & { fd?: number }
+      if (typeof stream.fd === 'number') {
+        fs.fsyncSync(stream.fd)
+      }
+    } catch {
+      // flush 실패는 무시
+    }
+  }
+
   private writeHeader(): void {
     const now = new Date()
     const electronVersion = process.versions.electron || 'unknown'
@@ -192,6 +214,7 @@ class FileLogger {
     this.writeToFile(`=== Workout Log Session Started: ${this.formatTimestamp(new Date(session.startedAt))} ===`)
     this.writeToFile(`=== Master ID: ${session.masterId} ===`)
     if (session.userId) this.writeToFile(`=== User ID: ${session.userId} ===`)
+    if (session.kind) this.writeToFile(`=== Session Kind: ${session.kind} ===`)
     this.writeToFile(`=== Log Dir: ${this.logDir} ===`)
     this.writeToFile('============================================================')
   }

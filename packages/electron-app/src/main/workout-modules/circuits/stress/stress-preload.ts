@@ -1,5 +1,6 @@
 import type { WorkoutModuleContext } from '../shared/base-module'
 import { log } from '../shared/base-module'
+import { collectMainHalfGroupExercises } from '../shared/main-half-group-utils'
 import { buildTimelineForStress, getPreloadWindow } from '../shared/timeline-utils'
 
 /** CD 스트레칭 프리로드 위임 (보통 `PreloadManager`) */
@@ -39,26 +40,11 @@ export const preloadNextStressGroup = (
   stressGroupIndex: number,
   currentRound: number,
 ): void => {
-  const nextGroupBase = (stressGroupIndex + 1) * 3 + 1
-  const nextGroupPositions = new Set<string>()
-  for (let i = 0; i < 3; i++) {
-    nextGroupPositions.add(`L${nextGroupBase + i}`)
-    nextGroupPositions.add(`R${nextGroupBase + i}`)
-  }
-  const nextGroupSeqs: any[] = []
-  const nextPosMap = new Map<string, any>()
-  for (const seq of ctx.activePlaySession!.sequences) {
-    if (
-      seq.round > 0 &&
-      seq.round < 99 &&
-      seq.exercise_type === 'exercise' &&
-      nextGroupPositions.has(seq.position || '') &&
-      !nextPosMap.has(seq.position || '')
-    ) {
-      nextPosMap.set(seq.position || '', seq)
-      nextGroupSeqs.push(seq)
-    }
-  }
+  const nextPosMap = collectMainHalfGroupExercises(
+    ctx.activePlaySession!.sequences,
+    stressGroupIndex + 1,
+  )
+  const nextGroupSeqs = Array.from(nextPosMap.values())
   if (nextGroupSeqs.length > 0) {
     const nextKey = `stress:${stressGroupIndex + 1}`
     if (!ctx.preloadedGroupKeys.has(nextKey)) {

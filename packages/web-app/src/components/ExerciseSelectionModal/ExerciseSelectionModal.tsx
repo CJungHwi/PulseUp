@@ -1,3 +1,12 @@
+/**
+ * ExerciseSelectionModal
+ * - 기능: 운동 검색/선택 팝업, 영상 미리보기, 선택 운동 추가
+ * - API: getExercisesList, exerciseFavoriteApi (sp_GetUserExerciseFavorites, sp_ToggleUserExerciseFavorite)
+ * - Components: ExerciseFavoriteStar, VimeoFitIframe
+ * - 흐름: 카테고리/검색 → 목록 표시 → 체크 선택 + 즐겨찾기 → 선택추가 → 확인
+ * - 선택된 운동 목록: 순서를 위치 라벨(Main A1~A6/B1~B6, DS DS1~, CD CD1~)로 표시,
+ *   WorkoutEditor 와 동일한 행 드래그 앤 드롭으로 순서 변경(드롭 시 위치 재할당)
+ */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom';
 import {
@@ -8,8 +17,6 @@ import {
   RotateCcw,
   X,
   Plus as AddIcon,
-  ChevronUp,
-  ChevronDown,
   Video as VideoIcon,
   Trash,
   Trash2,
@@ -68,6 +75,9 @@ import {
 } from '../../store/slices/workoutCategorySlice'
 import { EXERCISE_LEVEL_LABELS, ExerciseLevel } from '../../types/workoutCategory'
 import { VimeoFitIframe } from '../VimeoFitIframe/VimeoFitIframe';
+import { ExerciseFavoriteStar } from './ExerciseFavoriteStar';
+import { useExerciseFavorites } from './useExerciseFavorites';
+import { positionFromMainIndex } from '@/utils/gridPositionCodes';
 
 // 공통으로 사용하는 Exercise 타입 정의
 interface Exercise {
@@ -104,8 +114,13 @@ interface ExerciseSelectionModalProps {
 
 interface SelectedExerciseWithTime extends Exercise {
   selectedTime: number // 초 단위
-  position?: string // 운동 위치 (L1~L6)
+  position?: string // 운동 위치 (A1~A6, B1~B6)
 }
+
+const MAIN_POSITION_OPTIONS = [
+  'A1', 'A2', 'A3', 'A4', 'A5', 'A6',
+  'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
+]
 
 const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
   open,
@@ -128,7 +143,14 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
     searchResults = { exercises: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } },
     searchLoading = false,
   } = workoutCategoriesState || {}
-  const isModalLoading = open && (majorCategoriesLoading || exercisesLoading || searchLoading)
+  const {
+    favoritesLoading,
+    favoriteToggleLoadingId,
+    isFavorite,
+    toggleFavorite,
+  } = useExerciseFavorites({ enabled: open })
+
+  const isModalLoading = open && (majorCategoriesLoading || exercisesLoading || searchLoading || favoritesLoading)
 
   // 지역 상태
   const [selectedCategory, setSelectedCategory] = useState<string>(defaultCategory)
@@ -137,6 +159,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
   const [appliedSearchKeyword, setAppliedSearchKeyword] = useState<string>('') // 실제로 검색에 적용할 키워드
   const [filterKeyword1, setFilterKeyword1] = useState<string>('') // 1차 결과 내 필터링 키워드
   const [filterKeyword2, setFilterKeyword2] = useState<string>('') // 2차 결과 내 필터링 키워드
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState<boolean>(false) // 즐겨찾기만 보기
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
   const [tempSelectedExercises, setTempSelectedExercises] = useState<SelectedExerciseWithTime[]>([]) // 팝업 내에서 새로 선택한 운동들만 포함
   const [parentSelectedExercises, setParentSelectedExercises] = useState<SelectedExerciseWithTime[]>([]) // 부모창에서 전달된 운동들 (hidden, 중복체크용)
@@ -169,7 +192,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
     } else if (category === 'CD') {
       return ['CD1', 'CD2', 'CD3', 'CD4', 'CD5', 'CD6']
     }
-    return ['L1', 'L2', 'L3', 'L4', 'L5', 'L6']
+    return MAIN_POSITION_OPTIONS
   }
 
   // 카테고리에 따른 기본 위치값 반환
@@ -179,7 +202,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
     } else if (category === 'CD') {
       return 'CD1'
     }
-    return 'L1'
+    return 'A1'
   }
 
   // Snackbar 상태
@@ -196,6 +219,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
   // 운동 목록 테이블 컬럼 너비 (리사이징 가능, 운동명영문 30% 증가: 180→234, 특징및효과 50% 감소: 200→100)
   const [exerciseTableColWidths, setExerciseTableColWidths] = useState({
     select: 50,
+    favorite: 50,
     badge: 60,
     name_en: 180,
     name_ko: 180,
@@ -206,6 +230,11 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
   const [resizingCol, setResizingCol] = useState<string | null>(null)
   const resizeStartXRef = useRef<number>(0)
   const resizeStartWidthRef = useRef<number>(0)
+
+  // 선택된 운동 목록 행 드래그 앤 드롭 순서 변경 상태
+  const [draggedRowIndex, setDraggedRowIndex] = useState<number | null>(null)
+  /** 행 사이 삽입 위치 (0 = 맨 위, list.length = 맨 아래) */
+  const [dropInsertIndex, setDropInsertIndex] = useState<number | null>(null)
 
   // 테이블 컬럼 리사이즈 핸들러
   const handleResizeStart = useCallback((colKey: keyof typeof exerciseTableColWidths, e: React.MouseEvent) => {
@@ -278,6 +307,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
       setFilterKeyword1('')
       setFilterKeyword2('')
       setSearchType('')
+      setShowFavoritesOnly(false)
 
       // 디버깅: 카테고리 데이터 확인
       console.log('defaultCategory:', defaultCategory)
@@ -762,10 +792,11 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
 
   // 확인 버튼 핸들러
   const handleConfirm = () => {
-    const exercisesToReturn = tempSelectedExercises.map(ex => ({
+    const exercisesToReturn = tempSelectedExercises.map((ex, index) => ({
       ...ex,
       id: ex.uniqueKey || ex.id, // 각 인스턴스별 고유 id (동일 운동 중복 추가 시 삭제가 해당 항목만 제거되도록)
       originalExerciseId: ex.originalExerciseId || ex.id, // 저장 시 사용할 실제 운동 ID
+      position: getSelectedPositionLabel(index), // 표시 순서와 동일한 위치 라벨로 반환
       duration: ex.selectedTime
     }))
     onExercisesSelected(exercisesToReturn)
@@ -794,26 +825,110 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
     onClose()
   }
 
-  // 운동 순서 변경 함수들
-  const moveExerciseUp = (currentIndex: number) => {
-    if (currentIndex > 0) {
-      const newExercises = [...tempSelectedExercises]
-      const temp = newExercises[currentIndex]
-      newExercises[currentIndex] = newExercises[currentIndex - 1]
-      newExercises[currentIndex - 1] = temp
-      setTempSelectedExercises(newExercises)
-    }
+  // 선택된 운동 목록 순서 라벨 (Main A1~A6/B1~B6, DS DS1~, CD CD1~)
+  const getSelectedPositionLabel = (index: number): string => {
+    if (selectedCategory === 'DS') return `DS${index + 1}`
+    if (selectedCategory === 'CD') return `CD${index + 1}`
+    return positionFromMainIndex(index)
   }
 
-  const moveExerciseDown = (currentIndex: number) => {
-    if (currentIndex < tempSelectedExercises.length - 1) {
-      const newExercises = [...tempSelectedExercises]
-      const temp = newExercises[currentIndex]
-      newExercises[currentIndex] = newExercises[currentIndex + 1]
-      newExercises[currentIndex + 1] = temp
-      setTempSelectedExercises(newExercises)
-    }
+  // 순서 변경 후 각 운동의 position 을 순서대로 재할당 (부모 저장 시 위치 일관성 유지)
+  const reassignSelectedPositions = (
+    list: SelectedExerciseWithTime[]
+  ): SelectedExerciseWithTime[] =>
+    list.map((ex, idx) => ({ ...ex, position: getSelectedPositionLabel(idx) }))
+
+  // 드래그 앤 드롭 순서 변경 (WorkoutEditor 와 동일한 방식)
+  const handleReorderSelectedExercise = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    setTempSelectedExercises((prev) => {
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) {
+        return prev
+      }
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return reassignSelectedPositions(next)
+    })
   }
+
+  const resolveReorderTargetIndex = (fromIndex: number, insertIndex: number): number => {
+    let targetIndex = insertIndex
+    if (fromIndex < insertIndex) targetIndex -= 1
+    return targetIndex
+  }
+
+  const handleSelectedRowDragStart = (
+    event: React.DragEvent<HTMLTableRowElement>,
+    index: number
+  ) => {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('[data-row-drag-disabled]')) {
+      event.preventDefault()
+      return
+    }
+    setDraggedRowIndex(index)
+    setDropInsertIndex(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+  }
+
+  const handleSelectedRowDragOverInsert = (
+    event: React.DragEvent<HTMLTableRowElement>,
+    insertIndex: number
+  ) => {
+    if (draggedRowIndex === null) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setDropInsertIndex(insertIndex)
+  }
+
+  const handleSelectedRowDropAtInsert = (
+    event: React.DragEvent<HTMLTableRowElement>,
+    insertIndex: number
+  ) => {
+    event.preventDefault()
+    if (draggedRowIndex === null) {
+      setDropInsertIndex(null)
+      return
+    }
+    const targetIndex = resolveReorderTargetIndex(draggedRowIndex, insertIndex)
+    if (draggedRowIndex !== targetIndex) {
+      handleReorderSelectedExercise(draggedRowIndex, targetIndex)
+    }
+    setDraggedRowIndex(null)
+    setDropInsertIndex(null)
+  }
+
+  const handleSelectedRowDragEnd = () => {
+    setDraggedRowIndex(null)
+    setDropInsertIndex(null)
+  }
+
+  const renderSelectedDropSlot = (insertIndex: number) => (
+    <ShadcnTableRow
+      key={`selected-drop-slot-${insertIndex}`}
+      className="border-b-0 hover:bg-transparent"
+      onDragOver={(event) => handleSelectedRowDragOverInsert(event, insertIndex)}
+      onDrop={(event) => handleSelectedRowDropAtInsert(event, insertIndex)}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node)) return
+        setDropInsertIndex((prev) => (prev === insertIndex ? null : prev))
+      }}
+    >
+      <ShadcnTableCell
+        colSpan={3}
+        className={cn(
+          'p-0 border-b-0 transition-all',
+          dropInsertIndex === insertIndex && draggedRowIndex !== null
+            ? 'h-3 bg-primary/80'
+            : draggedRowIndex !== null
+              ? 'h-2 bg-primary/15'
+              : 'h-0'
+        )}
+      />
+    </ShadcnTableRow>
+  )
 
   // 위치 변경 핸들러
   const handlePositionChange = (exerciseId: string, newPosition: string) => {
@@ -937,8 +1052,12 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
       })
     }
 
+    if (showFavoritesOnly) {
+      filteredResults = filteredResults.filter(ex => isFavorite(String(ex.id)))
+    }
+
     return filteredResults
-  }, [allExercises, searchResults?.exercises, appliedSearchKeyword, searchType, filterKeyword1, filterKeyword2])
+  }, [allExercises, searchResults?.exercises, appliedSearchKeyword, searchType, filterKeyword1, filterKeyword2, showFavoritesOnly, isFavorite])
 
   // 중복 데이터 체크 함수
   const isDuplicate = (exercise: Exercise) => {
@@ -1015,8 +1134,8 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
 
                 <CardContent className="flex-1 min-h-0 flex flex-col gap-[3px] p-4 overflow-hidden">
                   {/* 필터링 영역 */}
-                  <div className="flex flex-wrap items-center gap-2 mb-4">
-                    <div className="w-[180px]">
+                  <div className="flex flex-nowrap items-center gap-1.5 mb-4 shrink-0">
+                    <div className="w-[140px] shrink-0">
                       <ShadcnSelect
                         value={selectedCategory || "all"}
                         onValueChange={(val) => setSelectedCategory(val === "all" ? "" : val)}
@@ -1042,7 +1161,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                       </ShadcnSelect>
                     </div>
 
-                    <div className="w-[130px]">
+                    <div className="w-[115px] shrink-0">
                       <ShadcnSelect
                         value={searchType || "all"}
                         onValueChange={(val) => setSearchType(val === "all" ? "" : val)}
@@ -1071,9 +1190,9 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                       </ShadcnSelect>
                     </div>
 
-                    <div className="relative flex-1 min-w-[200px]">
+                    <div className="relative flex-1 min-w-[72px]">
                       <Input
-                        placeholder="검색어 입력"
+                        placeholder="검색어"
                         value={searchKeyword}
                         onChange={(e) => setSearchKeyword(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -1093,16 +1212,27 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                       )}
                     </div>
 
-                    <Button onClick={handleSearch} disabled={searchLoading} className="h-9 gap-2">
+                    <Button onClick={handleSearch} disabled={searchLoading} className="h-9 gap-1.5 px-2.5 shrink-0">
                       <Search className="w-4 h-4" />
                       검색
                     </Button>
 
-                    <div className="w-px h-6 bg-border mx-1" />
+                    <div className="flex items-center gap-1.5 h-9 px-1.5 border rounded-md bg-card shrink-0">
+                      <Checkbox
+                        id="favorite-filter"
+                        checked={showFavoritesOnly}
+                        onCheckedChange={(checked) => setShowFavoritesOnly(!!checked)}
+                      />
+                      <Label htmlFor="favorite-filter" className="text-xs cursor-pointer whitespace-nowrap">
+                        즐겨찾기
+                      </Label>
+                    </div>
 
-                    <div className="relative w-[160px]">
+                    <div className="w-px h-6 bg-border shrink-0" />
+
+                    <div className="relative w-[100px] shrink-0">
                       <Input
-                        placeholder="1차 결과 내 검색"
+                        placeholder="1차 검색"
                         value={filterKeyword1}
                         onChange={(e) => setFilterKeyword1(e.target.value)}
                         className="bg-card pr-8 h-9 text-xs"
@@ -1118,9 +1248,9 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                       )}
                     </div>
 
-                    <div className="relative w-[160px]">
+                    <div className="relative w-[100px] shrink-0">
                       <Input
-                        placeholder="2차 결과 내 검색"
+                        placeholder="2차 검색"
                         value={filterKeyword2}
                         onChange={(e) => setFilterKeyword2(e.target.value)}
                         className="bg-card pr-8 h-9 text-xs"
@@ -1139,7 +1269,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                     <Button
                       variant="destructive"
                       size="icon"
-                      className="h-9 w-9"
+                      className="h-9 w-9 shrink-0"
                       onClick={() => {
                         clearSearchTableSelection()
                         setSearchKeyword('')
@@ -1147,6 +1277,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                         setFilterKeyword1('')
                         setFilterKeyword2('')
                         setSearchType('')
+                        setShowFavoritesOnly(false)
                       }}
                     >
                       <RotateCcw className="w-4 h-4" />
@@ -1168,6 +1299,17 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                                 tabIndex={0}
                                 className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors"
                                 onMouseDown={(e) => handleResizeStart('select', e)}
+                              />
+                            </ShadcnTableHead>
+                            <ShadcnTableHead className="h-[45px] px-2 text-xs font-bold text-center border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8] relative select-none" style={{ width: exerciseTableColWidths.favorite }}>
+                              즐겨찾기
+                              <div
+                                role="separator"
+                                aria-orientation="vertical"
+                                aria-label="컬럼 넓이 조절"
+                                tabIndex={0}
+                                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors"
+                                onMouseDown={(e) => handleResizeStart('favorite', e)}
                               />
                             </ShadcnTableHead>
                             <ShadcnTableHead className="h-[45px] px-2 text-xs font-bold text-center border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8] relative select-none" style={{ width: exerciseTableColWidths.badge }}>
@@ -1273,6 +1415,18 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                                     </div>
                                   </ShadcnTableCell>
                                   <ShadcnTableCell className={cn(
+                                    "p-0 text-center border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors",
+                                    isItemSelected && "bg-primary/20"
+                                  )}>
+                                    <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
+                                      <ExerciseFavoriteStar
+                                        isFavorite={isFavorite(String(exercise.id))}
+                                        disabled={favoriteToggleLoadingId === String(exercise.id)}
+                                        onToggle={() => toggleFavorite(String(exercise.id))}
+                                      />
+                                    </div>
+                                  </ShadcnTableCell>
+                                  <ShadcnTableCell className={cn(
                                     "p-0 text-center border-r border-[#343637] dark:border-[#6b7280] whitespace-nowrap group-hover:text-inherit transition-colors",
                                     isItemSelected && "bg-primary/20"
                                   )}>
@@ -1324,7 +1478,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                             })
                           ) : (
                             <ShadcnTableRow>
-                              <ShadcnTableCell colSpan={8} className="h-24 text-center text-muted-foreground text-xs">
+                              <ShadcnTableCell colSpan={9} className="h-24 text-center text-muted-foreground text-xs">
                                 {searchLoading ? "데이터를 로딩 중입니다..." : "검색 결과가 없습니다."}
                               </ShadcnTableCell>
                             </ShadcnTableRow>
@@ -1435,7 +1589,6 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                     <ShadcnTable className="w-full table-fixed border-separate border-spacing-0">
                       <ShadcnTableHeader className="sticky top-0 z-20">
                         <ShadcnTableRow className="hover:bg-transparent">
-                          <ShadcnTableHead className="w-[40px] h-[45px] px-0 text-xs font-bold text-center border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]"></ShadcnTableHead>
                           <ShadcnTableHead className="w-[60px] h-[45px] px-0 text-xs font-bold text-center border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]">순서</ShadcnTableHead>
                           <ShadcnTableHead className="h-[45px] px-2 text-xs font-bold text-center border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]">운동명</ShadcnTableHead>
                           <ShadcnTableHead className="w-[50px] h-[45px] px-0 text-xs font-bold text-center border-b-0 bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]">삭제</ShadcnTableHead>
@@ -1443,77 +1596,62 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
                       </ShadcnTableHeader>
                       <ShadcnTableBody>
                         {tempSelectedExercises.length > 0 ? (
-                          tempSelectedExercises.map((exercise, index) => {
-                            const isItemSelected = rightSelectedExercise?.id === exercise.id;
-                            return (
-                              <ShadcnTableRow
-                                key={exercise.uniqueKey || exercise.id}
-                                className={cn(
-                                  "h-[35px] group cursor-pointer transition-colors bg-[#f9fafb] dark:bg-[#1d1d1d]",
-                                  isItemSelected
-                                    ? "bg-primary/10 text-blue-600 dark:text-yellow-400"
-                                    : "hover:text-blue-600 dark:hover:text-yellow-400 hover:bg-muted/30"
-                                )}
-                                onClick={() => handleSelectedExerciseRowSelection(exercise)}
-                              >
-                                <ShadcnTableCell className="p-0 border-r border-[#343637] dark:border-[#6b7280]">
-                                  <div className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                                    {index > 0 && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="w-4 h-4 h-auto p-0 text-muted-foreground group-hover:text-inherit hover:text-primary"
-                                        onClick={() => moveExerciseUp(index)}
-                                      >
-                                        <ChevronUp className="w-3 h-3" />
-                                      </Button>
-                                    )}
-                                    {index < tempSelectedExercises.length - 1 && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="w-4 h-4 h-auto p-0 text-muted-foreground group-hover:text-inherit hover:text-primary"
-                                        onClick={() => moveExerciseDown(index)}
-                                      >
-                                        <ChevronDown className="w-3 h-3" />
-                                      </Button>
-                                    )}
-                                  </div>
-                                </ShadcnTableCell>
-                                <ShadcnTableCell className="p-0 text-center border-r border-[#343637] dark:border-[#6b7280] text-xs">
-                                  {index + 1}
-                                </ShadcnTableCell>
-                                <ShadcnTableCell className="p-2 border-r border-[#343637] dark:border-[#6b7280]">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="truncate text-xs font-medium">
-                                        {exercise.name_ko}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="left" className="bg-popover p-0 border-none shadow-xl">
-                                      {createExerciseTooltipContent(exercise)}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </ShadcnTableCell>
-                                <ShadcnTableCell className="p-0 text-center">
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-8 w-8 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleRemoveExercise(exercise.id);
-                                    }}
-                                  >
-                                    <Trash className="w-4 h-4" />
-                                  </Button>
-                                </ShadcnTableCell>
-                              </ShadcnTableRow>
-                            );
-                          })
+                          <>
+                            {renderSelectedDropSlot(0)}
+                            {tempSelectedExercises.map((exercise, index) => {
+                              const isItemSelected = rightSelectedExercise?.id === exercise.id;
+                              return (
+                                <React.Fragment key={exercise.uniqueKey || exercise.id}>
+                                <ShadcnTableRow
+                                  draggable
+                                  onDragStart={(event) => handleSelectedRowDragStart(event, index)}
+                                  onDragEnd={handleSelectedRowDragEnd}
+                                  className={cn(
+                                    "h-[35px] group transition-colors bg-[#f9fafb] dark:bg-[#1d1d1d] cursor-grab active:cursor-grabbing",
+                                    isItemSelected
+                                      ? "bg-primary/10 text-blue-600 dark:text-yellow-400"
+                                      : "hover:text-blue-600 dark:hover:text-yellow-400 hover:bg-muted/30",
+                                    draggedRowIndex === index && "opacity-40"
+                                  )}
+                                  onClick={() => handleSelectedExerciseRowSelection(exercise)}
+                                >
+                                  <ShadcnTableCell className="p-0 text-center border-r border-[#343637] dark:border-[#6b7280] text-xs group-hover:text-inherit transition-colors">
+                                    <span className="tabular-nums">{getSelectedPositionLabel(index)}</span>
+                                  </ShadcnTableCell>
+                                  <ShadcnTableCell className="p-2 border-r border-[#343637] dark:border-[#6b7280]">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="truncate text-xs font-medium">
+                                          {exercise.name_ko}
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="left" className="bg-popover p-0 border-none shadow-xl">
+                                        {createExerciseTooltipContent(exercise)}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </ShadcnTableCell>
+                                  <ShadcnTableCell data-row-drag-disabled className="p-0 text-center">
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-8 w-8 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveExercise(exercise.id);
+                                      }}
+                                    >
+                                      <Trash className="w-4 h-4" />
+                                    </Button>
+                                  </ShadcnTableCell>
+                                </ShadcnTableRow>
+                                {renderSelectedDropSlot(index + 1)}
+                                </React.Fragment>
+                              );
+                            })}
+                          </>
                         ) : (
                           <ShadcnTableRow className="bg-[#f9fafb] dark:bg-[#1d1d1d]">
-                            <ShadcnTableCell colSpan={4} className="h-24 text-center text-muted-foreground text-xs">
+                            <ShadcnTableCell colSpan={3} className="h-24 text-center text-muted-foreground text-xs">
                               선택된 운동이 없습니다
                             </ShadcnTableCell>
                           </ShadcnTableRow>

@@ -1,6 +1,8 @@
 import type { RendererContext, SequenceRenderer } from './base-renderer.js'
 import { log } from './base-renderer.js'
 import { isLeftMonitorDisplay, isWorkoutGridDisplayType } from '../renderer-display-types.js'
+import { mapMainPositionToDisplayLabel } from '../five-screen-seek-label.js'
+import { parseGridPosition } from '../../common/grid-position-codes.js'
 
 export class ReadyRenderer implements SequenceRenderer {
   canHandle(data: any): boolean {
@@ -36,11 +38,23 @@ export class ReadyRenderer implements SequenceRenderer {
       previewSequences.forEach((seq: any) => {
         const pos = seq.position
         if (!pos) return
-        const positionPrefix = pos.charAt(0)
-        if ((isLeftMonitor && positionPrefix === 'L') || (!isLeftMonitor && positionPrefix === 'R')) {
-          log(`🎬 [ReadyRenderer] Main 프리뷰 로드: ${pos} (${seq.exercise_name})`)
-          ctx.workoutGridDisplay.playVideo(seq, pos, syncStartAtMs, false)
+
+        const parsed = parseGridPosition(pos)
+        if (parsed) {
+          if ((isLeftMonitor && parsed.side !== 'left') || (!isLeftMonitor && parsed.side !== 'right')) {
+            return
+          }
+        } else {
+          return
         }
+
+        const displayPos = mapMainPositionToDisplayLabel(ctx.currentDisplay, pos, {
+          fiveScreen: ctx.usesFiveScreenPanelQueue,
+        })
+        if (!displayPos) return
+
+        log(`🎬 [ReadyRenderer] Main 프리뷰 로드: ${pos} → ${displayPos} (${seq.exercise_name})`)
+        ctx.workoutGridDisplay.playVideo(seq, displayPos, syncStartAtMs, false)
       })
       ctx.setHasCountdownPreview(true)
     }

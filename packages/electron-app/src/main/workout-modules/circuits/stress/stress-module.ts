@@ -9,9 +9,19 @@ import {
   preloadStressFromTimeline,
 } from './stress-preload'
 import { getScreenMode } from '../../../screen-mode-store'
+import {
+  STRESS_LAP_ORDER,
+  normalizeGridPosition,
+  parseGridPosition,
+} from '../../../../common/grid-position-codes.js'
+import {
+  collectMainHalfGroupExercises,
+  getGridNumFromPosition,
+  getMainHalfGroupIndexFromPosition,
+} from '../shared/main-half-group-utils'
 
-/** Stress 실행 순서: L1→L2→L3→R3→R2→R1 (전반전), L4→L5→L6→R6→R5→R4 (후반전) */
-const LAP_ORDER = ['L1', 'L2', 'L3', 'R3', 'R2', 'R1', 'L4', 'L5', 'L6', 'R6', 'R5', 'R4']
+/** Stress 실행 순서: A1→A2→A3→A6→A5→A4 (전반), B1→B2→B3→B6→B5→B4 (후반) */
+const LAP_ORDER = [...STRESS_LAP_ORDER]
 
 export class StressModule implements WorkoutModule {
   private stretchingModule = new StretchingModule()
@@ -83,38 +93,22 @@ export class StressModule implements WorkoutModule {
       return
     }
 
-    const posMatch = (currentSeq.position || '').match(/^[LR](\d+)$/)
-    const posNum = posMatch ? parseInt(posMatch[1]) : 1
-    const stressGroupIndex = Math.floor((posNum - 1) / 3)
+    const posNum = getGridNumFromPosition(currentSeq.position || '')
+    const stressGroupIndex = getMainHalfGroupIndexFromPosition(currentSeq.position || '')
 
-    const groupBaseNum = stressGroupIndex * 3 + 1
-    const groupPositions = new Set<string>()
-    for (let i = 0; i < 3; i++) {
-      groupPositions.add(`L${groupBaseNum + i}`)
-      groupPositions.add(`R${groupBaseNum + i}`)
-    }
-
-    const positionMap = new Map<string, any>()
-    for (const seq of ctx.activePlaySession!.sequences) {
-      if (seq.round > 0 && seq.round < 99 &&
-        seq.exercise_type === 'exercise' &&
-        seq.exercise_name !== '임시운동' &&
-        seq.duration > 0 &&
-        groupPositions.has(seq.position || '') &&
-        !positionMap.has(seq.position || '')) {
-        positionMap.set(seq.position || '', seq)
-      }
-    }
+    const positionMap = collectMainHalfGroupExercises(
+      ctx.activePlaySession!.sequences,
+      stressGroupIndex,
+    )
 
     const sortedPositionKeys = Array.from(positionMap.keys()).sort((a, b) => {
-      const aPrefix = a.charAt(0)
-      const bPrefix = b.charAt(0)
-      const aNum = parseInt(a.substring(1))
-      const bNum = parseInt(b.substring(1))
-      if (aPrefix === 'L' && bPrefix === 'R') return -1
-      if (aPrefix === 'R' && bPrefix === 'L') return 1
-      if (aPrefix === 'L') return aNum - bNum
-      return bNum - aNum
+      const pa = parseGridPosition(a)
+      const pb = parseGridPosition(b)
+      if (!pa || !pb) return 0
+      if (pa.side === 'left' && pb.side === 'right') return -1
+      if (pa.side === 'right' && pb.side === 'left') return 1
+      if (pa.side === 'left') return pa.num - pb.num
+      return pb.num - pa.num
     })
     const currentGroup = sortedPositionKeys.map(k => positionMap.get(k)!)
 
@@ -127,7 +121,7 @@ export class StressModule implements WorkoutModule {
     const metadata = ctx.activePlaySession!.metadata || {}
     const totalSets = metadata.totalSets || 3
     const lapIndexRaw = (() => {
-      const idx = LAP_ORDER.indexOf(currentSeq.position || '')
+      const idx = LAP_ORDER.indexOf(normalizeGridPosition(currentSeq.position || ''))
       return idx >= 0 ? idx + 1 : 1
     })()
     const isSecondHalf = posNum >= 4
@@ -159,7 +153,7 @@ export class StressModule implements WorkoutModule {
       // set1→set2 전환 시 큐 advance (첫 그룹은 카운트다운에서 이미 advance됨, 네비게이션 리셋(-1)은 제외)
       if (stressGroupIndex > 0 && prevGroupIndex >= 0) {
         if (isFiveScreenMode) {
-          log('🎬 [StressModule] 5-screen: L4/R4 전용 패널 사용으로 슬롯 advance 생략')
+          log('🎬 [StressModule] 5-screen: B* 전용 패널 사용으로 슬롯 advance 생략')
         } else {
           ctx.broadcastToAllWindows('workout-advance-slots', {
             slots: [1, 2, 3]
@@ -239,10 +233,8 @@ export class StressModule implements WorkoutModule {
     log(`🎬 [StressModule] ${currentSeq.exercise_name} (${currentSeq.duration}초)${isWater ? ' [물보충]' : ''}`)
 
     const prevExercise = currentIndex > 0 ? ctx.activePlaySession!.sequences[currentIndex - 1] : null
-    const posForLap = (prevExercise?.position || currentSeq.position || '') as string
-    const posMatch = posForLap.match(/^[LR](\d+)$/)
-    const posNum = posMatch ? parseInt(posMatch[1]) : 1
-    const restGroupIndex = Math.floor((posNum - 1) / 3)
+    const posForLap = normalizeGridPosition(prevExercise?.position || currentSeq.position || '')
+    const restGroupIndex = getMainHalfGroupIndexFromPosition(posForLap)
     const restActiveSet: ActiveSet = {
       left: restGroupIndex > 0 ? 'set2' : 'set1',
       right: restGroupIndex > 0 ? 'set2' : 'set1',
@@ -298,25 +290,11 @@ export class StressModule implements WorkoutModule {
 
     if (!nextExercise) return
 
-    const nextPosMatch = (nextExercise.position || '').match(/^[LR](\d+)$/)
-    const nextPosNum = nextPosMatch ? parseInt(nextPosMatch[1]) : 1
-    const nextStressGroupIndex = Math.floor((nextPosNum - 1) / 3)
-    const nextGroupBase = nextStressGroupIndex * 3 + 1
-    const nextGroupPositions = new Set<string>()
-    for (let i = 0; i < 3; i++) {
-      nextGroupPositions.add(`L${nextGroupBase + i}`)
-      nextGroupPositions.add(`R${nextGroupBase + i}`)
-    }
-
-    const nextPosMap = new Map<string, any>()
-    for (const seq of ctx.activePlaySession!.sequences) {
-      if (seq.round > 0 && seq.round < 99 &&
-        seq.exercise_type === 'exercise' &&
-        nextGroupPositions.has(seq.position || '') &&
-        !nextPosMap.has(seq.position || '')) {
-        nextPosMap.set(seq.position || '', seq)
-      }
-    }
+    const nextStressGroupIndex = getMainHalfGroupIndexFromPosition(nextExercise.position || '')
+    const nextPosMap = collectMainHalfGroupExercises(
+      ctx.activePlaySession!.sequences,
+      nextStressGroupIndex,
+    )
 
     const nextActiveSet: ActiveSet = {
       left: nextStressGroupIndex > 0 ? 'set2' : 'set1',
@@ -326,12 +304,13 @@ export class StressModule implements WorkoutModule {
     log(`💧 [StressModule] 물보충 중 다음 그룹 영상 로드 (Group ${nextStressGroupIndex + 1})`)
     const syncStartAtMs = Date.now() + 1000
     const sortedNextKeys = Array.from(nextPosMap.keys()).sort((a, b) => {
-      const aP = a.charAt(0), bP = b.charAt(0)
-      const aN = parseInt(a.substring(1)), bN = parseInt(b.substring(1))
-      if (aP === 'L' && bP === 'R') return -1
-      if (aP === 'R' && bP === 'L') return 1
-      if (aP === 'L') return aN - bN
-      return bN - aN
+      const pa = parseGridPosition(a)
+      const pb = parseGridPosition(b)
+      if (!pa || !pb) return 0
+      if (pa.side === 'left' && pb.side === 'right') return -1
+      if (pa.side === 'right' && pb.side === 'left') return 1
+      if (pa.side === 'left') return pa.num - pb.num
+      return pb.num - pa.num
     })
     sortedNextKeys.forEach(k => {
       const seq = nextPosMap.get(k)!

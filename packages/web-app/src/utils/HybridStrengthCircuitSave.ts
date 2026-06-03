@@ -5,6 +5,7 @@ import {
   type Exercise as ExerciseType,
   type PanelRow as PanelRowType
 } from './exerciseSequenceGenerator'
+import { DEFAULT_GRID_POSITION } from './gridPositionCodes'
 
 // 운동 정보 타입
 export interface Exercise {
@@ -141,7 +142,7 @@ export function createHybridStrengthCircuitSaveData(params: CreateSaveDataParams
         // workout_history_detail.method_round 저장을 위해 round 전달 (Loop의 Set / Stress의 Round)
         // round가 없으면 1로 저장되어 모두 1로 보이는 문제가 발생할 수 있음
         round: typeof exercise.round === 'number' && Number.isFinite(exercise.round) ? exercise.round : 1,
-        position: exercise.position || 'L1',
+        position: exercise.position || DEFAULT_GRID_POSITION,
         exercise_type: 'main'
       })),
       // 3. Cool Down Stretching 운동들

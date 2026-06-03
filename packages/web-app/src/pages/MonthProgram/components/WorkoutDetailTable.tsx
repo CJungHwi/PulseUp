@@ -2,7 +2,7 @@
  * WorkoutDetailTable — 운동 상세 정보 테이블 (위치/운동명/자극부위/특징/기구)
  *
  * - 컬럼 너비 % 단위로 리사이즈 가능 (`useDetailColumnResize` 훅 사용)
- * - AMRAP/EMOM 카테고리는 "횟수" 컬럼 추가
+ * - AMRAP/EMOM·stress/loop MAIN 카테고리는 "횟수" 컬럼 추가
  */
 
 import React from 'react'
@@ -16,7 +16,7 @@ import {
   TableRow as ShadcnTableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { isAMRAPorEMOMCategory, isCD, isDS } from './monthProgramUtils'
+import { showWorkoutDetailRepsColumn, isCD, isDS } from './monthProgramUtils'
 import type { WorkoutDetail, WorkoutMaster } from './monthProgramTypes'
 
 interface WorkoutDetailTableProps {
@@ -45,13 +45,14 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
   resizingDetailColIndex,
   onColResizeStart,
 }) => {
-  const isAMRAPorEMOM = isAMRAPorEMOMCategory(
+  const showRepsColumn = showWorkoutDetailRepsColumn(
     selectedMaster?.workoutCategoriesId,
     selectedMaster?.workoutCategory,
     selectedMaster?.workoutCategoriesName,
+    selectedMaster?.circuitType,
   )
-  const headers = isAMRAPorEMOM ? HEADERS_WITH_REPS : HEADERS_BASIC
-  const colWidths = isAMRAPorEMOM ? detailTableColumnWidthsWithReps : detailTableColumnWidths
+  const headers = showRepsColumn ? HEADERS_WITH_REPS : HEADERS_BASIC
+  const colWidths = showRepsColumn ? detailTableColumnWidthsWithReps : detailTableColumnWidths
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -100,7 +101,7 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
           <ShadcnTableBody>
             {workoutDetails.length > 0 ? (
               workoutDetails.map((row, idx) => {
-                const showReps = isAMRAPorEMOM && !isDS(row.major_category) && !isCD(row.major_category)
+                const showReps = showRepsColumn && !isDS(row.major_category) && !isCD(row.major_category)
                 return (
                   <ShadcnTableRow
                     key={row.id}
@@ -113,7 +114,7 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
                     <ShadcnTableCell className="text-center h-[35px] py-0 px-2 text-xs border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors">
                       {row.position ?? idx + 1}
                     </ShadcnTableCell>
-                    {isAMRAPorEMOM && (
+                    {showRepsColumn && (
                       <ShadcnTableCell className="text-center h-[35px] py-0 px-2 text-xs border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors">
                         {showReps ? row.reps ?? '-' : ''}
                       </ShadcnTableCell>

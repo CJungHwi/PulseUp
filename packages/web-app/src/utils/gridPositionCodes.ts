@@ -1,0 +1,142 @@
+/**
+ * 메인 운동 그리드 position 코드
+ * - prefix A/B = 전반(set1) / 후반(set2)
+ * - 숫자 1-3 = 좌측 모니터, 4-6 = 우측 모니터
+ * - 구형 L/R: normalizeGridPosition 으로 전치(transpose) 변환
+ */
+
+export const GRID_FIRST_HALF_PREFIX = 'A' as const
+export const GRID_SECOND_HALF_PREFIX = 'B' as const
+
+/** @deprecated A=전반 — monitorSide 용어와 혼동 방지 */
+export const GRID_LEFT_PREFIX = GRID_FIRST_HALF_PREFIX
+/** @deprecated B=후반 */
+export const GRID_RIGHT_PREFIX = GRID_SECOND_HALF_PREFIX
+
+export type GridHalfPrefix = typeof GRID_FIRST_HALF_PREFIX | typeof GRID_SECOND_HALF_PREFIX
+export type GridSidePrefix = GridHalfPrefix
+
+export type GridMonitorSide = 'left' | 'right'
+export type GridActiveSet = 'set1' | 'set2'
+
+export const MAIN_GRID_POSITION_ORDER: readonly string[] = [
+  'A1', 'A2', 'A3', 'A4', 'A5', 'A6',
+  'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
+]
+
+/** Stress/Loop snake lap 순서 (반 내 좌→우 스네이크) */
+export const STRESS_LAP_ORDER: readonly string[] = [
+  'A1', 'A2', 'A3', 'A6', 'A5', 'A4',
+  'B1', 'B2', 'B3', 'B6', 'B5', 'B4',
+]
+
+export const DEFAULT_GRID_POSITION = 'A1'
+
+export type ParsedGridPosition = {
+  prefix: GridHalfPrefix
+  num: number
+  /** 모니터 좌/우 — 숫자 1-3=left, 4-6=right */
+  side: GridMonitorSide
+  /** 모니터 내 슬롯 1-3 */
+  slot: number
+  /** set1=전반(A), set2=후반(B) */
+  set: GridActiveSet
+}
+
+const LEGACY_LEFT = 'L'
+const LEGACY_RIGHT = 'R'
+
+const toHalfPrefix = (raw: string): GridHalfPrefix | null => {
+  const upper = raw.toUpperCase()
+  if (upper === GRID_FIRST_HALF_PREFIX || upper === LEGACY_LEFT) return GRID_FIRST_HALF_PREFIX
+  if (upper === GRID_SECOND_HALF_PREFIX || upper === LEGACY_RIGHT) return GRID_SECOND_HALF_PREFIX
+  return null
+}
+
+/** 구 L/R position → A/B 전치: L1→A1, L4→B1, R1→A4, R4→B4 … */
+export const transposeLegacyLrToAb = (legacyPrefix: string, legacyNum: number): string => {
+  const half = legacyNum <= 3 ? GRID_FIRST_HALF_PREFIX : GRID_SECOND_HALF_PREFIX
+  const slot = ((legacyNum - 1) % 3) + 1
+  const num = legacyPrefix.toUpperCase() === LEGACY_LEFT ? slot : slot + 3
+  return `${half}${num}`
+}
+
+/** L/R·A/B position을 canonical A/B 형식으로 정규화. DS/CD 등은 그대로 반환 */
+export const normalizeGridPosition = (raw: unknown): string => {
+  const s = String(raw ?? '').trim()
+  const m = s.match(/^([lLaAbBrR])(\d+)$/)
+  if (!m) return s
+  const prefixChar = m[1].toUpperCase()
+  const num = parseInt(m[2], 10)
+  if (prefixChar === GRID_FIRST_HALF_PREFIX || prefixChar === GRID_SECOND_HALF_PREFIX) {
+    return `${prefixChar}${num}`
+  }
+  if (prefixChar === LEGACY_LEFT || prefixChar === LEGACY_RIGHT) {
+    return transposeLegacyLrToAb(prefixChar, num)
+  }
+  return s
+}
+
+export const parseGridPosition = (pos?: string): ParsedGridPosition | null => {
+  if (!pos) return null
+  const normalized = normalizeGridPosition(pos)
+  const m = normalized.match(/^([AB])(\d+)$/i)
+  if (!m) return null
+  const prefix = m[1].toUpperCase() as GridHalfPrefix
+  const num = parseInt(m[2], 10)
+  if (num < 1 || num > 6) return null
+  return {
+    prefix,
+    num,
+    side: num <= 3 ? 'left' : 'right',
+    slot: ((num - 1) % 3) + 1,
+    set: prefix === GRID_FIRST_HALF_PREFIX ? 'set1' : 'set2',
+  }
+}
+
+export const gridSetFromPrefix = (prefix: string): GridActiveSet | null => {
+  const p = prefix.toUpperCase()
+  if (p === GRID_FIRST_HALF_PREFIX) return 'set1'
+  if (p === GRID_SECOND_HALF_PREFIX) return 'set2'
+  return null
+}
+
+export const numOffsetForSide = (side: GridMonitorSide): number =>
+  side === 'left' ? 0 : 3
+
+export const isLeftGridSide = (prefix: string): boolean => {
+  const parsed = parseGridPosition(`${prefix}1`)
+  return parsed?.side === 'left'
+}
+
+export const gridSidePrefix = (isLeft: boolean): GridHalfPrefix =>
+  isLeft ? GRID_FIRST_HALF_PREFIX : GRID_SECOND_HALF_PREFIX
+
+export const buildGridPosition = (half: GridHalfPrefix, num: number): string =>
+  `${half}${num}`
+
+/** 인덱스(0-based)로 메인 position 부여 — A1~A6, B1~B6 순차 */
+export const positionFromMainIndex = (idx: number): string => {
+  const prefix = idx < 6 ? GRID_FIRST_HALF_PREFIX : GRID_SECOND_HALF_PREFIX
+  const num = (idx % 6) + 1
+  return `${prefix}${num}`
+}
+
+/** position 기준 정렬 값 */
+export const getMainPositionSortValue = (pos?: string): number => {
+  if (!pos) return 999
+  const m = pos.match(/([A-Z]+)(\d+)/)
+  if (!m) {
+    const n = parseInt(pos, 10)
+    return Number.isNaN(n) ? 999 : n
+  }
+  const p = m[1]
+  const n = parseInt(m[2], 10)
+  if (p === 'DS' || p === 'CD') return n
+  const parsed = parseGridPosition(`${p}${n}`)
+  if (!parsed) return 999
+  return (parsed.prefix === GRID_SECOND_HALF_PREFIX ? 6 : 0) + (parsed.num - 1)
+}
+
+export const isMainGridPosition = (pos: string): boolean =>
+  /^[ABab][1-6]$/.test(pos.trim()) || /^[LRlr][1-6]$/.test(pos.trim())

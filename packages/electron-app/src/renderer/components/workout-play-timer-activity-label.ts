@@ -1,4 +1,9 @@
 import { adjustActivityLabelFontSize } from './workout-play-timer-dom-fit.js'
+import {
+  applyReadyActivityLabelStyle,
+  applyReadyCountdownNumberStyle,
+  applyReadyCountdownSectionBackground,
+} from './workout-play-timer-ready-style.js'
 
 type ActivityLabelInput = {
   sequence: any
@@ -42,7 +47,9 @@ export const updateWorkoutTimerActivityLabel = (input: ActivityLabelInput): stri
   let activityType = 'MAIN'
   if (sequence.exercise_type === 'countdown') {
     activityType = 'Ready'
-    applyCommonTextStyle('READY', '#4CAF50')
+    applyReadyCountdownSectionBackground(side)
+    applyReadyActivityLabelStyle(activityLabel)
+    if (countdownEl) applyReadyCountdownNumberStyle(countdownEl)
   } else if (sequence.exercise_type === 'rest') {
     activityType = 'Rest'
     applyCommonTextStyle('REST', '#4CAF50')

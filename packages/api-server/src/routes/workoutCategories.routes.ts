@@ -8,8 +8,9 @@ import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth
 import { requireAdmin, type AdminRequest } from '../middleware/admin.middleware.js';
 import { validateRequest } from '../middleware/validation.middleware.js';
 import { successResponse, errorResponse } from '../utils/response.util.js';
-import { callProcedure, executeQuery, executeTransaction } from '../lib/database.js';
+import { callProcedure, executeQuery, executeTransaction, unwrapProcedureFirstRow, unwrapProcedureResultSetAt } from '../lib/database.js';
 import { LicenseService } from '../services/license.service.js';
+import monitorDisplayRoutes from './monitorDisplay.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -382,6 +383,62 @@ router.get('/exercises/list',
   }
 );
 
+const exerciseFavoriteToggleSchema = z.object({
+  exercise_id: z.string().min(1, 'exercise_id는 필수입니다'),
+});
+
+/**
+ * @route GET /api/workout-categories/exercises/favorites
+ * @desc 현재 사용자의 운동 즐겨찾기 목록 조회
+ * @access Private
+ */
+router.get(
+  '/exercises/favorites',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const authedReq = req as AuthenticatedRequest;
+      const userId = authedReq.user?.id;
+      if (!userId) return res.status(401).json(errorResponse('인증 정보가 없습니다', 'UNAUTHORIZED'));
+
+      const results = await callProcedure('sp_GetUserExerciseFavorites', [userId]);
+      const rows = Array.isArray(results) && Array.isArray(results[0]) ? results[0] : results;
+
+      res.json(successResponse(rows, '운동 즐겨찾기 목록을 성공적으로 조회했습니다'));
+    } catch (error) {
+      console.error('운동 즐겨찾기 목록 조회 오류:', error);
+      res.status(500).json(errorResponse('운동 즐겨찾기 목록 조회에 실패했습니다'));
+    }
+  }
+);
+
+/**
+ * @route POST /api/workout-categories/exercises/favorites/toggle
+ * @desc 현재 사용자의 운동 즐겨찾기 등록/해제
+ * @access Private
+ */
+router.post(
+  '/exercises/favorites/toggle',
+  authenticateToken,
+  validateRequest({ body: exerciseFavoriteToggleSchema }),
+  async (req, res) => {
+    try {
+      const authedReq = req as AuthenticatedRequest;
+      const userId = authedReq.user?.id;
+      if (!userId) return res.status(401).json(errorResponse('인증 정보가 없습니다', 'UNAUTHORIZED'));
+
+      const { exercise_id: exerciseId } = req.body as z.infer<typeof exerciseFavoriteToggleSchema>;
+      const results = await callProcedure('sp_ToggleUserExerciseFavorite', [userId, exerciseId]);
+      const rows = Array.isArray(results) && Array.isArray(results[0]) ? results[0] : results;
+
+      res.json(successResponse(rows, '운동 즐겨찾기가 성공적으로 변경되었습니다'));
+    } catch (error) {
+      console.error('운동 즐겨찾기 토글 오류:', error);
+      res.status(500).json(errorResponse('운동 즐겨찾기 변경에 실패했습니다'));
+    }
+  }
+);
+
 /**
  * @route POST /api/workout-categories/exercises
  * @desc 운동정보 생성 (운동구분 포함)
@@ -662,10 +719,14 @@ router.post(
         }
       }
 
-      // 결과에서 master id 추출
-      const firstRows = Array.isArray(results) && Array.isArray(results[0]) ? results[0] : Array.isArray(results) ? results : [];
-      const firstRow = Array.isArray(firstRows) ? firstRows[0] : null;
+      // 결과에서 master id 추출 (SP는 master_id 컬럼으로 반환하는 경우가 많음)
+      const firstRow = unwrapProcedureFirstRow<{ id?: string; master_id?: string }>(results);
       const savedId = firstRow?.id || firstRow?.master_id || effectiveMasterId;
+
+      if (!savedId) {
+        console.error('[HyberStrengthCircuitSave] savedId 추출 실패', { firstRow, effectiveMasterId });
+        return res.status(500).json(errorResponse('저장 ID를 확인할 수 없습니다'));
+      }
 
       res.json(successResponse({ id: savedId }, '저장되었습니다.'));
     } catch (error) {
@@ -1104,16 +1165,114 @@ router.get(
       //console.log('🔍 [API] 운동 기록 마스터 조회 - Authenticated UserId:', userId);
       //console.log('🔍 [API] 운동 기록 마스터 조회 - Final Admin Param:', admin);
 
-      const results = await callProcedure('sp_GetWorkoutHistoryMaster', [
-        userId,
-        query.yearMonth || null,
-        query.memo || null,
-        workoutCategory,
-        circuitType,
-        admin
-      ]);
+      const whereParts: string[] = [];
+      const params: unknown[] = [];
 
-      const rows = Array.isArray(results) && Array.isArray(results[0]) ? results[0] : results;
+      if (admin === '1') {
+        whereParts.push('whm.admin = TRUE');
+      } else {
+        whereParts.push('whm.user_id = ? AND (whm.admin = FALSE OR whm.admin IS NULL)');
+        params.push(userId);
+      }
+
+      if (query.yearMonth) {
+        whereParts.push("DATE_FORMAT(whm.date, '%Y-%m') = ?");
+        params.push(query.yearMonth);
+      }
+
+      if (query.memo) {
+        whereParts.push("whm.memo LIKE CONCAT('%', ?, '%')");
+        params.push(query.memo);
+      }
+
+      if (workoutCategory) {
+        whereParts.push(`(
+          whm.workout_categories_id = ?
+          OR wc.id = ?
+          OR wc.major_category = ?
+          OR wc.minor_category = ?
+        )`);
+        params.push(workoutCategory, workoutCategory, workoutCategory, workoutCategory);
+      }
+
+      if (circuitType) {
+        whereParts.push('COALESCE(plan_summary.circuit_type, whm.method_type) = ?');
+        params.push(circuitType);
+      }
+
+      const rows = await executeQuery(
+        `
+        SELECT
+          q.id,
+          q.date,
+          q.time,
+          q.memo,
+          q.is_admin,
+          q.workout_categories_id,
+          q.major_category,
+          q.major_category_name,
+          q.circuit_type,
+          CONCAT(
+            LPAD(FLOOR(q.total_workout_time / 60), 2, '0'),
+            '분',
+            LPAD(MOD(q.total_workout_time, 60), 2, '0'),
+            '초'
+          ) AS workout_time,
+          q.total_workout_time,
+          q.ds_seconds,
+          q.main_seconds,
+          q.cd_seconds,
+          q.total_seconds,
+          q.created_at
+        FROM (
+          SELECT
+            whm.id,
+            whm.date,
+            whm.time,
+            whm.memo,
+            whm.admin AS is_admin,
+            COALESCE(wc.id, whm.workout_categories_id) AS workout_categories_id,
+            COALESCE(wc.major_category, whm.workout_categories_id) AS major_category,
+            COALESCE(wc.major_category_name, whm.workout_categories_id) AS major_category_name,
+            COALESCE(plan_summary.circuit_type, whm.method_type) AS circuit_type,
+            COALESCE(
+              whm.total_seconds,
+              CASE
+                WHEN COALESCE(wc.major_category, whm.workout_categories_id) IN ('DS', 'CD', 'Dynamic_stretching', 'Static_stretching')
+                THEN COALESCE(detail_summary.max_duration, 0)
+                ELSE COALESCE(detail_summary.sum_duration, 0)
+              END,
+              0
+            ) AS total_workout_time,
+            COALESCE(whm.ds_seconds, 0) AS ds_seconds,
+            COALESCE(whm.main_seconds, 0) AS main_seconds,
+            COALESCE(whm.cd_seconds, 0) AS cd_seconds,
+            COALESCE(whm.total_seconds, 0) AS total_seconds,
+            whm.created_at
+          FROM workout_history_master whm
+          LEFT JOIN (
+            SELECT workout_history_master_id, SUM(duration) AS sum_duration, MAX(duration) AS max_duration
+            FROM workout_history_detail
+            GROUP BY workout_history_master_id
+          ) detail_summary ON whm.id = detail_summary.workout_history_master_id
+          LEFT JOIN (
+            SELECT
+              workout_history_master_id,
+              SUBSTRING_INDEX(GROUP_CONCAT(circuit_type ORDER BY round SEPARATOR ','), ',', 1) AS circuit_type
+            FROM workout_history_plan
+            GROUP BY workout_history_master_id
+          ) plan_summary ON whm.id = plan_summary.workout_history_master_id
+          LEFT JOIN workout_categories wc ON (
+            whm.workout_categories_id = wc.id
+            OR whm.workout_categories_id = wc.major_category
+            OR whm.workout_categories_id = wc.minor_category
+          )
+          WHERE ${whereParts.join(' AND ')}
+        ) q
+        ORDER BY q.date DESC, q.time DESC, q.created_at DESC
+        `,
+        params
+      );
 
       // 프로시저/DB 반영 상태에 따라 is_admin 컬럼이 없을 수 있어 API에서 보강
       const hasIsAdminField = Array.isArray(rows) && rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], 'is_admin');
@@ -1157,17 +1316,15 @@ router.get(
 
       const results = await callProcedure('sp_GetWorkoutHistoryDetail', [masterId]);
 
-      const masterRows = Array.isArray(results) && Array.isArray(results[0]) ? results[0] : [];
-      const detailRows = Array.isArray(results) && Array.isArray(results[1]) ? results[1] : [];
-      const planRows = Array.isArray(results) && Array.isArray(results[2]) ? results[2] : [];
+      const masterRows = unwrapProcedureResultSetAt<Record<string, unknown>>(results, 0);
+      const detailRows = unwrapProcedureResultSetAt<Record<string, unknown>>(results, 1);
+      const planRows = unwrapProcedureResultSetAt<Record<string, unknown>>(results, 2);
 
       console.log('[workout-history-detail] 프로시저 반환값:', {
         procedure: 'sp_GetWorkoutHistoryDetail',
         master: masterRows[0] ?? null,
         detailsCount: detailRows.length,
         plansCount: planRows.length,
-        details: detailRows,
-        plans: planRows
       });
 
       // 프로시저가 is_admin을 내려주지 않는 환경 대비: master row에 is_admin 보강
@@ -1493,11 +1650,12 @@ router.get('/workout-setting-images',
       }
 
       const imgResult = await callProcedure('sp_GetMonitorDefaultImageProfile', [userId]);
-      const rows = firstProcedureResultRows(imgResult) as { side: string; image_url: string }[];
+      const rows = firstProcedureResultRows(imgResult) as { image_kind?: string; side: string; image_url: string }[];
+      const defaultRows = rows.filter((row) => (row.image_kind || 'default') === 'default');
 
       const data = {
-        leftImageUrl: rows.find((row) => row.side === 'left')?.image_url || '',
-        rightImageUrl: rows.find((row) => row.side === 'right')?.image_url || ''
+        leftImageUrl: defaultRows.find((row) => row.side === 'left')?.image_url || '',
+        rightImageUrl: defaultRows.find((row) => row.side === 'right')?.image_url || ''
       };
 
       res.json(successResponse(data, '모니터 기본 이미지 조회 성공'));
@@ -1548,7 +1706,7 @@ router.post('/workout-setting-images/upload',
       const imageUrl = `${baseUrl}/uploads/${fileName}`;
       console.log('[workout-setting-images/upload] 이미지 저장 완료:', { filePath, imageUrl, baseUrl });
 
-      await callProcedure('sp_UpsertMonitorDefaultImageProfile', [userId, side, imageUrl]);
+      await callProcedure('sp_UpsertMonitorDefaultImageProfile', [userId, 'default', side, imageUrl]);
 
       res.json(successResponse({ imageUrl, side }, '이미지 업로드 및 저장 완료'));
     } catch (error) {
@@ -1579,10 +1737,11 @@ router.put('/workout-setting-images',
         async (connection) => {
           if (parsed.leftImageUrl !== undefined) {
             if (parsed.leftImageUrl === null || String(parsed.leftImageUrl).trim() === '') {
-              await connection.execute('CALL sp_DeleteMonitorDefaultImageProfileSide(?, ?)', [userId, 'left']);
+              await connection.execute('CALL sp_DeleteMonitorDefaultImageProfileSide(?, ?, ?)', [userId, 'default', 'left']);
             } else {
-              await connection.execute('CALL sp_UpsertMonitorDefaultImageProfile(?, ?, ?)', [
+              await connection.execute('CALL sp_UpsertMonitorDefaultImageProfile(?, ?, ?, ?)', [
                 userId,
+                'default',
                 'left',
                 parsed.leftImageUrl
               ]);
@@ -1591,13 +1750,15 @@ router.put('/workout-setting-images',
 
           if (parsed.rightImageUrl !== undefined) {
             if (parsed.rightImageUrl === null || String(parsed.rightImageUrl).trim() === '') {
-              await connection.execute('CALL sp_DeleteMonitorDefaultImageProfileSide(?, ?)', [
+              await connection.execute('CALL sp_DeleteMonitorDefaultImageProfileSide(?, ?, ?)', [
                 userId,
+                'default',
                 'right'
               ]);
             } else {
-              await connection.execute('CALL sp_UpsertMonitorDefaultImageProfile(?, ?, ?)', [
+              await connection.execute('CALL sp_UpsertMonitorDefaultImageProfile(?, ?, ?, ?)', [
                 userId,
+                'default',
                 'right',
                 parsed.rightImageUrl
               ]);
@@ -1627,11 +1788,12 @@ router.get('/system-default-images',
   async (req: AdminRequest, res) => {
     try {
       const sysResult = await callProcedure('sp_GetSystemDefaultImages', []);
-      const rows = firstProcedureResultRows(sysResult) as { side: string; image_url: string }[];
+      const rows = firstProcedureResultRows(sysResult) as { image_kind?: string; side: string; image_url: string }[];
+      const defaultRows = rows.filter((row) => (row.image_kind || 'default') === 'default');
 
       const data = {
-        leftImageUrl: rows.find((row) => row.side === 'left')?.image_url || '',
-        rightImageUrl: rows.find((row) => row.side === 'right')?.image_url || ''
+        leftImageUrl: defaultRows.find((row) => row.side === 'left')?.image_url || '',
+        rightImageUrl: defaultRows.find((row) => row.side === 'right')?.image_url || ''
       };
 
       res.json(successResponse(data, '시스템 기본 이미지 조회 성공'));
@@ -1652,11 +1814,12 @@ router.get('/system-default-images/public',
   async (req: AuthenticatedRequest, res) => {
     try {
       const sysResult = await callProcedure('sp_GetSystemDefaultImages', []);
-      const rows = firstProcedureResultRows(sysResult) as { side: string; image_url: string }[];
+      const rows = firstProcedureResultRows(sysResult) as { image_kind?: string; side: string; image_url: string }[];
+      const defaultRows = rows.filter((row) => (row.image_kind || 'default') === 'default');
 
       const data = {
-        leftImageUrl: rows.find((row) => row.side === 'left')?.image_url || '',
-        rightImageUrl: rows.find((row) => row.side === 'right')?.image_url || ''
+        leftImageUrl: defaultRows.find((row) => row.side === 'left')?.image_url || '',
+        rightImageUrl: defaultRows.find((row) => row.side === 'right')?.image_url || ''
       };
 
       res.json(successResponse(data, '시스템 기본 이미지 조회 성공'));
@@ -1703,7 +1866,7 @@ router.post('/system-default-images/upload',
       const imageUrl = `${baseUrl}/uploads/${fileName}`;
       console.log('[system-default-images/upload] 이미지 저장 완료:', { filePath, imageUrl, baseUrl });
 
-      await callProcedure('sp_UpsertSystemDefaultImage', [side, imageUrl]);
+      await callProcedure('sp_UpsertSystemDefaultImage', ['default', side, imageUrl]);
 
       res.json(successResponse({ imageUrl, side }, '시스템 기본 이미지 업로드 완료'));
     } catch (error) {
@@ -1730,9 +1893,10 @@ router.put('/system-default-images',
         async (connection) => {
           if (parsed.leftImageUrl !== undefined) {
             if (parsed.leftImageUrl === null || String(parsed.leftImageUrl).trim() === '') {
-              await connection.execute('CALL sp_DeleteSystemDefaultImageSide(?)', ['left']);
+              await connection.execute('CALL sp_DeleteSystemDefaultImageSide(?, ?)', ['default', 'left']);
             } else {
-              await connection.execute('CALL sp_UpsertSystemDefaultImage(?, ?)', [
+              await connection.execute('CALL sp_UpsertSystemDefaultImage(?, ?, ?)', [
+                'default',
                 'left',
                 parsed.leftImageUrl
               ]);
@@ -1741,9 +1905,10 @@ router.put('/system-default-images',
 
           if (parsed.rightImageUrl !== undefined) {
             if (parsed.rightImageUrl === null || String(parsed.rightImageUrl).trim() === '') {
-              await connection.execute('CALL sp_DeleteSystemDefaultImageSide(?)', ['right']);
+              await connection.execute('CALL sp_DeleteSystemDefaultImageSide(?, ?)', ['default', 'right']);
             } else {
-              await connection.execute('CALL sp_UpsertSystemDefaultImage(?, ?)', [
+              await connection.execute('CALL sp_UpsertSystemDefaultImage(?, ?, ?)', [
+                'default',
                 'right',
                 parsed.rightImageUrl
               ]);
@@ -1761,6 +1926,10 @@ router.put('/system-default-images',
     }
   }
 );
+
+// 모니터 표시 설정 라우트는 `/:id` 와일드카드보다 먼저 매칭되어야 함
+// (그렇지 않으면 /monitor-display-profile 가 /:id 로 가로채여 404 반환)
+router.use(monitorDisplayRoutes);
 
 /**
  * @route GET /api/workout-categories/:id

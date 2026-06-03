@@ -5,6 +5,19 @@
 
 import type { ExerciseSequence } from '../../../types'
 import { resolveEmomStepDurationSec } from '../emom/emom-constants'
+import {
+  DEFAULT_GRID_POSITION,
+  GRID_FIRST_HALF_PREFIX,
+  normalizeGridPosition,
+} from '../../../../common/grid-position-codes.js'
+
+const mirrorRightMonitorPos = (slotPos: string): string | null => {
+  const m = slotPos.match(/^A(\d+)$/)
+  if (!m) return null
+  const num = parseInt(m[1], 10)
+  if (num <= 3) return `${GRID_FIRST_HALF_PREFIX}${num + 3}`
+  return null
+}
 
 export interface TimelineEntry {
   startMs: number
@@ -35,7 +48,7 @@ function isValidExercise(seq: ExerciseSequence): boolean {
 
 /**
  * DS (Dynamic Stretching) - round=0
- * 3개씩 그룹(DS1-3, DS4-6), 그룹 내 L1→L2→L3 순차
+ * 3개씩 그룹(DS1-3, DS4-6), 그룹 내 A1→A2→A3 순차
  */
 export function buildTimelineForDS(sequences: ExerciseSequence[]): TimelineResult {
   const flat: TimelineEntry[] = []
@@ -54,10 +67,9 @@ export function buildTimelineForDS(sequences: ExerciseSequence[]): TimelineResul
 
   groups.forEach((group, gi) => {
     const slotBase = gi * 3 + 1
-    const positions = [`L${slotBase}`, `L${slotBase + 1}`, `L${slotBase + 2}`] as const
     group.forEach((seq, idx) => {
       const position = `${prefix}${gi * 3 + idx + 1}`
-      const slotPos = positions[idx]
+      const slotPos = `${GRID_FIRST_HALF_PREFIX}${slotBase + idx}`
       const startMs = currentMs
       const endMs = currentMs + seq.duration * 1000
       currentMs = endMs
@@ -75,10 +87,12 @@ export function buildTimelineForDS(sequences: ExerciseSequence[]): TimelineResul
       arr.push(entry)
       byPosition.set(slotPos, arr)
 
-      const rightPos = slotPos.replace('L', 'R')
-      const arrR = byPosition.get(rightPos) || []
-      arrR.push(entry)
-      byPosition.set(rightPos, arrR)
+      const rightPos = mirrorRightMonitorPos(slotPos)
+      if (rightPos) {
+        const arrR = byPosition.get(rightPos) || []
+        arrR.push(entry)
+        byPosition.set(rightPos, arrR)
+      }
     })
   })
 
@@ -106,10 +120,9 @@ export function buildTimelineForCD(sequences: ExerciseSequence[]): TimelineResul
 
   groups.forEach((group, gi) => {
     const slotBase = gi * 3 + 1
-    const positions = [`L${slotBase}`, `L${slotBase + 1}`, `L${slotBase + 2}`] as const
     group.forEach((seq, idx) => {
       const position = `${prefix}${gi * 3 + idx + 1}`
-      const slotPos = positions[idx]
+      const slotPos = `${GRID_FIRST_HALF_PREFIX}${slotBase + idx}`
       const startMs = currentMs
       const endMs = currentMs + seq.duration * 1000
       currentMs = endMs
@@ -127,10 +140,12 @@ export function buildTimelineForCD(sequences: ExerciseSequence[]): TimelineResul
       arr.push(entry)
       byPosition.set(slotPos, arr)
 
-      const rightPos = slotPos.replace('L', 'R')
-      const arrR = byPosition.get(rightPos) || []
-      arrR.push(entry)
-      byPosition.set(rightPos, arrR)
+      const rightPos = mirrorRightMonitorPos(slotPos)
+      if (rightPos) {
+        const arrR = byPosition.get(rightPos) || []
+        arrR.push(entry)
+        byPosition.set(rightPos, arrR)
+      }
     })
   })
 
@@ -156,7 +171,7 @@ export function buildTimelineForStress(
     const durationMs = seq.duration * 1000
 
     if (seq.exercise_type === 'exercise' && isValidExercise(seq)) {
-      const pos = seq.position || 'L1'
+      const pos = normalizeGridPosition(seq.position || DEFAULT_GRID_POSITION)
       const entry: TimelineEntry = {
         startMs: currentMs,
         endMs: currentMs + durationMs,
@@ -195,7 +210,7 @@ export function buildTimelineForLoop(
     const durationMs = seq.duration * 1000
 
     if (seq.exercise_type === 'exercise' && isValidExercise(seq)) {
-      const pos = seq.position || 'L1'
+      const pos = normalizeGridPosition(seq.position || DEFAULT_GRID_POSITION)
       const entry: TimelineEntry = {
         startMs: currentMs,
         endMs: currentMs + durationMs,
@@ -251,7 +266,7 @@ export function buildTimelineForAMRAP(
       const endMs = currentMs + maxDuration * 1000
 
       roundSeqs.forEach((s) => {
-        const pos = s.position || 'L1'
+        const pos = normalizeGridPosition(s.position || DEFAULT_GRID_POSITION)
         const entry: TimelineEntry = {
           startMs,
           endMs,
@@ -293,7 +308,7 @@ export function buildTimelineForEMOM(
     const durationMs = resolveEmomStepDurationSec(seq.duration) * 1000
 
     if (seq.exercise_type === 'exercise' && isValidExercise(seq)) {
-      const pos = seq.position || 'L1'
+      const pos = normalizeGridPosition(seq.position || DEFAULT_GRID_POSITION)
       const entry: TimelineEntry = {
         startMs: currentMs,
         endMs: currentMs + durationMs,

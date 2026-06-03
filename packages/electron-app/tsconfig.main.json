@@ -9,12 +9,14 @@
     "noEmit": false
   },
   "include": [
-    "src/main/**/*"
+    "src/main/**/*",
+    "src/common/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "src/preload.ts",
-    "src/renderer"
+    "src/renderer",
+    "**/*.test.ts"
   ]
 }

@@ -4,7 +4,7 @@ import {
   classifyByPhase,
   splitIntoTwoGroups,
   classifyMainByPosition,
-  normalizeLrGridPosition,
+  normalizeGridPosition,
   fillStandardSlotQueues,
   fillFiveScreenSlotQueues,
 } from '../shared/queue-builder-base'
@@ -39,8 +39,8 @@ export function buildAmrapQueue(
   }
 
   return {
-    leftQueues: fillStandardSlotQueues('L', dsGroup1, dsGroup2, mainSets, extraBlocks, cdGroup1, cdGroup2),
-    rightQueues: fillStandardSlotQueues('R', dsGroup1, dsGroup2, mainSets, extraBlocks, cdGroup1, cdGroup2),
+    leftQueues: fillStandardSlotQueues('left', dsGroup1, dsGroup2, mainSets, extraBlocks, cdGroup1, cdGroup2),
+    rightQueues: fillStandardSlotQueues('right', dsGroup1, dsGroup2, mainSets, extraBlocks, cdGroup1, cdGroup2),
   }
 }
 
@@ -60,8 +60,8 @@ function buildAmrapExtraBlocks(
       const block: { [pos: string]: any } = {}
       for (const seq of mainExercises) {
         if (Number(seq.round) !== mainRoundsSorted[ri]) continue
-        const pos = normalizeLrGridPosition(seq.position || '')
-        if (pos && /^[LR]\d+$/.test(pos) && !block[pos]) block[pos] = seq
+        const pos = normalizeGridPosition(seq.position || '')
+        if (pos && /^[AB]\d+$/.test(pos) && !block[pos]) block[pos] = seq
       }
       if (Object.keys(block).length > 0) blocks.push(block)
     }

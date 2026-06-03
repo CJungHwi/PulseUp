@@ -10,6 +10,7 @@ export interface RendererContext {
   currentRound: number
   currentActiveSet: 'set1' | 'set2'
   hasCountdownPreview: boolean
+  usesFiveScreenPanelQueue: boolean
 
   setCurrentRound: (round: number) => void
   setCurrentActiveSet: (set: 'set1' | 'set2') => void

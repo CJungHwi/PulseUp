@@ -1,7 +1,7 @@
 /** 타이머 모니터 좌측 패널(SET/MOVE·카운트다운·하단 시계) — 모든 서킷 공용 */
 export const createLeftTimerDisplayHtml = (): string => {
   return `
-      <div style="
+      <div id="timer-left-panel-root" style="
         flex: 1;
         display: flex; 
         flex-direction: column; 

@@ -5,11 +5,17 @@ import { speakWorkout } from './renderer-speech.js'
 import { showCountdownModal as mountCountdownModal } from './renderer-countdown-modal.js'
 import { ElectronRendererBase } from './electron-renderer-base.js'
 import { displayTypeToFivePanel, isLeftMonitorDisplay } from './renderer-display-types.js'
+import { applyIntroMonitorImage } from './applyMonitorDisplayToDom.js'
 import { resolveMainPhaseSeekLabel } from './five-screen-seek-label.js'
 import { scheduleIntroSequencesForMonitor } from './circuits/intro-workout-grid-schedule.js'
 import { schedulePreviewMainSequences } from './circuits/workout-preview-sequence-schedule.js'
 import { resolveWorkoutCircuitType } from './components/workout-timer-circuit.js'
 import type { WorkoutPlayTimerUI } from './components/WorkoutPlayTimerUI.js'
+import {
+  DEFAULT_GRID_POSITION,
+  normalizeGridPosition,
+  parseGridPosition,
+} from '../common/grid-position-codes.js'
 
 export abstract class ElectronRendererWorkout extends ElectronRendererBase {
   private usesFiveScreenPanelQueue = false
@@ -84,6 +90,7 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
       this.workoutPlayTimerUI.hideIntroMode()
     }
     if (this.workoutGridDisplay) {
+      this.workoutGridDisplay.cancelIntroFocus()
       if (!data?.preservePreloadCache) {
         this.workoutGridDisplay.clearPreloadCache()
       }
@@ -110,17 +117,61 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
     if (!this.isWorkoutGridDisplay(this.currentDisplay)) return
     if (!this.workoutGridDisplay) return
 
+    const introDisplay = data?.introDisplay
+    if (introDisplay?.displayText) {
+      this.applyMonitorDisplayFromPayload(introDisplay)
+    }
+
     const isLeftMonitor = isLeftMonitorDisplay(this.currentDisplay)
-    const introImageUrl = String(
-      isLeftMonitor ? data?.leftImageUrl ?? '' : data?.rightImageUrl ?? ''
-    ).trim()
+    let introImageUrl = applyIntroMonitorImage(this.currentDisplay, introDisplay || {
+      leftImageUrl: data?.leftImageUrl ?? '',
+      centerImageUrl: data?.centerImageUrl ?? '',
+      rightImageUrl: data?.rightImageUrl ?? '',
+      displayText: data?.displayText ?? ''
+    })
+    if (!introImageUrl) {
+      introImageUrl = String(
+        isLeftMonitor ? data?.leftImageUrl ?? '' : data?.rightImageUrl ?? ''
+      ).trim() || undefined
+    }
 
     log(`🎬 인트로 모드 그리드 렌더링 (${this.currentDisplay})`, {
       introImageUrl: introImageUrl || '(없음)'
     })
     // clearCache=false: ready·이전 단계에서 쌓인 오프스크린 preload 를 인트로·운동시작까지 유지
-    this.workoutGridDisplay.render(true, introImageUrl || undefined, 0, false)
-    scheduleIntroSequencesForMonitor(this.workoutGridDisplay, data, isLeftMonitor)
+    this.workoutGridDisplay.render(
+      true,
+      introImageUrl || undefined,
+      0,
+      false,
+      this.usesFiveScreenPanelQueue,
+    )
+    scheduleIntroSequencesForMonitor(this.workoutGridDisplay, data, this.currentDisplay, {
+      fiveScreen: this.usesFiveScreenPanelQueue,
+    })
+  }
+
+  protected handleIntroFocus(data: {
+    target?: import('./circuits/intro-position-codes.js').IntroFocusTarget
+    sequence?: any
+  }) {
+    if (!this.introPlaybackActive) return
+    if (!this.isWorkoutGridDisplay(this.currentDisplay)) return
+    if (!this.workoutGridDisplay || !data?.target) return
+
+    void this.workoutGridDisplay.focusIntroPosition(data.target, data.sequence).then((focused) => {
+      if (focused) {
+        log(`🎬 인트로 선택보기: ${data.target?.positionCode} (${this.currentDisplay})`)
+      }
+    })
+  }
+
+  protected handleIntroFocusCancel() {
+    if (!this.isWorkoutGridDisplay(this.currentDisplay)) return
+    if (!this.workoutGridDisplay) return
+
+    this.workoutGridDisplay.cancelIntroFocus()
+    log(`🎬 인트로 선택보기 취소 (${this.currentDisplay})`)
   }
 
   protected handleWorkoutPlayPreview(data: any) {
@@ -163,7 +214,9 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
     schedulePreviewMainSequences(
       {
         grid: this.workoutGridDisplay,
+        currentDisplay: this.currentDisplay,
         isLeftMonitor,
+        usesFiveScreenPanelQueue: this.usesFiveScreenPanelQueue,
         syncStartAtMs,
         getMainTargetSetFromPosition: (p) => this.getMainTargetSetFromPosition(p),
         getCurrentActiveSet: () => this.currentActiveSet,
@@ -203,7 +256,7 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
           }
         })
       } else {
-        positionsToPreload.push(seq.position || 'L1')
+        positionsToPreload.push(normalizeGridPosition(seq.position || DEFAULT_GRID_POSITION))
       }
 
       positionsToPreload.forEach(position => {
@@ -266,8 +319,9 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
 
       const firstExercise = exercises[0]
 
-      const isForLeftMonitor = legacyPos.startsWith('L')
-      if (isLeftMonitor !== isForLeftMonitor) return
+      const parsed = parseGridPosition(legacyPos)
+      const isForLeftMonitor = parsed?.side === 'left'
+      if (parsed && isLeftMonitor !== isForLeftMonitor) return
 
       exercisesToPlay.push({ legacyPos, exercise: firstExercise, actualPosition: legacyPos })
     })
@@ -313,13 +367,17 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
       return
     }
 
-    // 3-screen 모드 (기존): 좌우 합쳐진 mergedQueues 에서 자기 prefix 만 필터링
-    const prefix = isLeftMonitorDisplay(this.currentDisplay) ? 'L' : 'R'
+    // 3-screen: merged 큐에서 자기 모니터(side)만 필터
+    const isLeft = isLeftMonitorDisplay(this.currentDisplay)
     const filteredQueues: { [slotNum: number]: Array<{ sequence: any; position: string; label: string }> } = {}
 
     for (const [slotNumStr, entries] of Object.entries(slotQueues)) {
       const slotNum = Number(slotNumStr)
-      const filtered = entries.filter((e: any) => e.position.startsWith(prefix))
+      const filtered = entries.filter((e: any) => {
+        const parsed = parseGridPosition(e.position)
+        if (!parsed) return false
+        return parsed.side === (isLeft ? 'left' : 'right')
+      })
       if (filtered.length > 0) {
         filteredQueues[slotNum] = filtered
       }
@@ -347,8 +405,10 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
       targetLabel = position && /^DS\d+$/.test(position) ? position : 'DS1'
     } else if (round === 99) {
       targetLabel = position && /^CD\d+$/.test(position) ? position : 'CD1'
-    } else if (position && /^[LR](\d+)$/i.test(position)) {
-      targetLabel = resolveMainPhaseSeekLabel(this.currentDisplay, position)
+    } else if (position && /^[ABLR](\d+)$/i.test(position)) {
+      targetLabel = resolveMainPhaseSeekLabel(this.currentDisplay, position, {
+        fiveScreen: this.usesFiveScreenPanelQueue,
+      })
     }
 
     if (targetLabel) {
@@ -369,40 +429,27 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
     }
   }
 
-  // DS/CD: 숫자 1-3, 7-9, 13-15... -> 좌측 / 4-6, 10-12, 16-18... -> 우측
-  // Main (L/R prefix): L -> 좌측 / R -> 우측
+  // Main: parseGridPosition.side (num 1-3=좌, 4-6=우)
   protected isPositionForLeftMonitor(position: string): boolean {
     if (!position) return true
 
-    const prefix = position.charAt(0).toUpperCase()
-
-    if (prefix === 'L') return true
-    if (prefix === 'R') return false
+    const parsed = parseGridPosition(position)
+    if (parsed) return parsed.side === 'left'
 
     const match = position.match(/(\d+)$/)
     if (match) {
       const num = parseInt(match[1], 10)
-      const groupIndex = Math.floor((num - 1) / 3)
-      return groupIndex % 2 === 0
+      return num <= 3
     }
 
     return true
   }
 
-  // Main(L/R) position 기반으로 세트(set1/set2) 결정
-  // 예: L1~L3=set1, L4~L6=set2, L7~L9=set1, L10~L12=set2 ...
+  /** prefix A=set1(전반), B=set2(후반) */
   protected getMainTargetSetFromPosition(position: string): 'set1' | 'set2' | null {
     if (!position) return null
-    const prefix = position.charAt(0).toUpperCase()
-    if (prefix !== 'L' && prefix !== 'R') return null
-
-    const match = position.match(/(\d+)$/)
-    if (!match) return null
-    const num = Number.parseInt(match[1], 10)
-    if (!Number.isFinite(num) || num <= 0) return null
-
-    const groupIndex = Math.floor((num - 1) / 3)
-    return groupIndex % 2 === 0 ? 'set1' : 'set2'
+    const parsed = parseGridPosition(position)
+    return parsed?.set ?? null
   }
 
   protected buildRendererContext(): RendererContext {
@@ -413,6 +460,7 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
       currentRound: this.currentRound,
       currentActiveSet: this.currentActiveSet,
       hasCountdownPreview: this.hasCountdownPreview,
+      usesFiveScreenPanelQueue: this.usesFiveScreenPanelQueue,
       setCurrentRound: (round: number) => { this.currentRound = round },
       setCurrentActiveSet: (set: 'set1' | 'set2') => { this.currentActiveSet = set },
       setHasCountdownPreview: (value: boolean) => { this.hasCountdownPreview = value },
@@ -606,5 +654,8 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
     }
     removeOverlayElementById('countdown-modal')
     removeOverlayElementById('countdown-modal-style')
+    if (this.workoutPlayTimerUI) {
+      this.workoutPlayTimerUI.cancelReadyCountdown()
+    }
   }
 }

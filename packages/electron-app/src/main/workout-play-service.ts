@@ -23,6 +23,8 @@ import { buildEmomQueue } from './workout-modules/circuits/emom/emom-queue-build
 import { buildLoopQueue } from './workout-modules/circuits/loop/loop-queue-builder'
 import { buildAmrapQueue } from './workout-modules/circuits/amrap/amrap-queue-builder'
 import type { QueueBuilderFn } from './workout-modules/circuits/shared/queue-builder-types'
+import { parseIntroFocusCommandPayload } from '../common/intro-position-codes'
+import { normalizeGridPosition } from '../common/grid-position-codes'
 import type {
   ExerciseSequence,
   WorkoutPlaySession,
@@ -31,6 +33,11 @@ import type {
 import { workoutInfoDevLog } from './workout-dev-log.js'
 import { getScreenMode } from './screen-mode-store.js'
 import { HeartRateCleanupTrigger } from './heart-rate-modules/heart-rate-cleanup-trigger.js'
+import {
+  fetchResolvedMonitorDisplay,
+  type ResolvedMonitorDisplay
+} from './monitor-display-resolver-client.js'
+import { fileLogger } from './file-logger.js'
 
 const log = workoutInfoDevLog
 
@@ -86,12 +93,58 @@ export class WorkoutPlayService {
   /** 운동 단계 전환·water break 1회 진입 시점에 끊긴 심박 슬롯 정리 IPC를 트리거 */
   private heartRateCleanupTrigger: HeartRateCleanupTrigger
 
+  /** start-workout-play 시 resolve된 모니터 표시 (API 재호출·401 방지) */
+  private cachedInitDisplay: ResolvedMonitorDisplay | null = null
+  private cachedIntroDisplay: ResolvedMonitorDisplay | null = null
+
   constructor(deps: WorkoutPlayServiceDeps) {
     this.deps = deps
     this.heartRateCleanupTrigger = new HeartRateCleanupTrigger({
       isStretchingCategory: (c) => this.deps.isStretchingCategory(c),
       isCoolDownCategory: (c) => this.deps.isCoolDownCategory(c),
       getRoundMajorCategory: (r) => this.deps.getRoundMajorCategory(r),
+    })
+  }
+
+  /** 인트로/운동 시작 버튼 시점 — 세션별 로그 파일 분리 (로그 보내기용) */
+  private beginPlaybackLogSession(kind: 'intro' | 'workout-start'): void {
+    const session = this.activePlaySession
+    if (!session?.masterId) return
+
+    const rotated = fileLogger.beginWorkoutLogSession({
+      masterId: session.masterId,
+      userId: session.userId,
+      kind,
+    })
+    if (rotated) {
+      log(`📝 세션 로그 파일 생성 (${kind}): ${rotated.filename}`)
+    }
+  }
+
+  private async resolveMonitorDisplay(
+    context: 'default' | 'intro',
+    exerciseId?: string
+  ): Promise<ResolvedMonitorDisplay> {
+    const session = this.activePlaySession
+    return fetchResolvedMonitorDisplay({
+      webAppUrl: this.deps.getWebAppUrl(),
+      authHeaders: this.deps.buildAuthHeaders(),
+      fetchWithTimeout: this.deps.fetchWithTimeout,
+      masterId: session?.masterId,
+      exerciseId,
+      context
+    })
+  }
+
+  private maybeBroadcastExerciseMonitorDisplay(_sequence: ExerciseSequence | null | undefined): void {
+    const display = this.cachedInitDisplay
+    if (display) {
+      this.deps.broadcastToAllWindows('monitor-display-updated', { display, context: 'default' })
+      return
+    }
+    void this.resolveMonitorDisplay('default').then((resolved) => {
+      this.cachedInitDisplay = resolved
+      this.deps.broadcastToAllWindows('monitor-display-updated', { display: resolved, context: 'default' })
     })
   }
 
@@ -179,6 +232,8 @@ export class WorkoutPlayService {
             log(`🧹 끊긴 심박 슬롯 정리 신호 발행: ${cleanupReason}`)
             this.deps.broadcastToAllWindows('heart-rate-cleanup-disconnected', { reason: cleanupReason })
           }
+
+          this.maybeBroadcastExerciseMonitorDisplay(data?.sequence)
         }
         this.deps.broadcastToAllWindows(channel, data)
 
@@ -231,6 +286,8 @@ export class WorkoutPlayService {
       if (this.activePlaySession) {
         this.stopPlaySession()
       }
+      this.cachedInitDisplay = null
+      this.cachedIntroDisplay = null
 
       const normalizedSequences = Array.isArray(data.sequences)
         ? data.sequences.map((seq: any, idx: number) => {
@@ -300,15 +357,11 @@ export class WorkoutPlayService {
           let legacyPositionGroups: { [key: string]: any[] } | null = null
           if (isNextStretching) {
             legacyPositionGroups = {
-              L1: [] as any[], L2: [] as any[], L3: [] as any[],
-              R1: [] as any[], R2: [] as any[], R3: [] as any[]
+              A1: [] as any[], A2: [] as any[], A3: [] as any[],
             }
             previewSequences.slice(0, 3).forEach((item, idx) => {
-              const slotIndex = idx % 3
-              const leftPos = `L${slotIndex + 1}`
-              const rightPos = `R${slotIndex + 1}`
-              legacyPositionGroups![leftPos].push(item)
-              legacyPositionGroups![rightPos].push(item)
+              const pos = `A${idx + 1}`
+              legacyPositionGroups![pos].push(item)
             })
           }
 
@@ -364,6 +417,34 @@ export class WorkoutPlayService {
         metadata: data.metadata
       }
 
+      const pickDisplay = (raw: unknown): ResolvedMonitorDisplay | null => {
+        if (!raw || typeof raw !== 'object') return null
+        const d = raw as Record<string, unknown>
+        return {
+          leftImageUrl: String(d.leftImageUrl ?? ''),
+          centerImageUrl: String(d.centerImageUrl ?? ''),
+          rightImageUrl: String(d.rightImageUrl ?? ''),
+          displayText: String(d.displayText ?? '')
+        }
+      }
+
+      const preInit = pickDisplay(data.initDisplay)
+      const preIntro = pickDisplay(data.introDisplay)
+
+      const initDisplay = preInit ?? await this.resolveMonitorDisplay('default')
+      const introDisplay = preIntro ?? await this.resolveMonitorDisplay('intro')
+
+      this.cachedInitDisplay = initDisplay
+      this.cachedIntroDisplay = introDisplay
+
+      log('[handleWorkoutPlay] monitor display:', {
+        masterId: data.masterId,
+        initLeft: initDisplay.leftImageUrl || '(empty)',
+        introLeft: introDisplay.leftImageUrl || '(empty)',
+        displayText: initDisplay.displayText || '(empty)',
+        source: preInit ? 'relay-payload' : 'api-resolve'
+      })
+
       this.deps.broadcastToAllWindows('workout-play-ready', {
         session: this.activePlaySession,
         sequences: finalSequences.map((s: any) => {
@@ -373,7 +454,9 @@ export class WorkoutPlayService {
           }
           return s
         }),
-        metadata: data.metadata
+        metadata: data.metadata,
+        initDisplay,
+        introDisplay
       })
 
       this.resetDsPreloadTracking()
@@ -415,6 +498,8 @@ export class WorkoutPlayService {
       if (this.activePlaySession.status !== 'ready') {
         throw new Error('운동이 대기 상태가 아닙니다')
       }
+
+      this.beginPlaybackLogSession('workout-start')
 
       const introCircuit = resolveIntroCircuitKind(this.activePlaySession.metadata)
       let shouldPrimeIntroStartPreload = false
@@ -495,6 +580,27 @@ export class WorkoutPlayService {
     return { success: true }
   }
 
+  /** 리모컨 「인트로 취소」 — 인트로 UI 종료 후 준비(프리뷰) 화면으로 복귀 */
+  handleCancelIntro(): { success: boolean; error?: string } {
+    if (!this.isIntroSelectViewAllowed()) {
+      return { success: false, error: '취소할 인트로가 없습니다.' }
+    }
+
+    this.introStartBlocksPlayStart = false
+    this.introWasPlayed = false
+
+    this.preloadedGroupKeys.clear()
+    this.deps.broadcastToAllWindows('workout-play-clear-preload', {})
+    this.deps.broadcastToAllWindows('intro-cancelled-reset-to-ready', {
+      showSplash: false,
+      preservePreloadCache: false,
+    })
+    this.broadcastWorkoutPlayPreview()
+
+    log('🎬 인트로 취소 — 준비 화면으로 복귀')
+    return { success: true }
+  }
+
   async handlePlayIntro(): Promise<{ success: boolean; error?: string }> {
     try {
       if (!this.activePlaySession) {
@@ -511,6 +617,8 @@ export class WorkoutPlayService {
         throw new Error('재생 가능한 운동이 없습니다.')
       }
 
+      this.beginPlaybackLogSession('intro')
+
       const rounds = Array.from(new Set(allExercises.map(s => Number(s.round)))).sort((a, b) => a - b)
       const mainRound = rounds.find(r => !this.deps.isStretchingOrCoolDownRound(r)) ?? rounds[0]
 
@@ -524,7 +632,7 @@ export class WorkoutPlayService {
       })
 
       if (mainSequences.length === 0) {
-        throw new Error('인트로에 표시할 메인 포지션(L/R) 운동이 없습니다.')
+        throw new Error('인트로에 표시할 메인 포지션(A/B) 운동이 없습니다.')
       }
 
       const idsToFetch = Array.from(
@@ -556,61 +664,24 @@ export class WorkoutPlayService {
         })
       }
 
-      let introLeftImageUrl = ''
-      let introRightImageUrl = ''
-      const authHeaders = this.deps.buildAuthHeaders()
-      const webAppUrl = this.deps.getWebAppUrl()
-
-      log('[handlePlayIntro] 이미지 조회 시작', {
-        webAppUrl,
-        authHeaderKeys: Object.keys(authHeaders)
+      let introDisplay = this.cachedIntroDisplay ?? await this.resolveMonitorDisplay('intro')
+      if (!this.cachedIntroDisplay) {
+        this.cachedIntroDisplay = introDisplay
+      }
+      log('[handlePlayIntro] intro display:', {
+        left: introDisplay.leftImageUrl || '(empty)',
+        source: this.cachedIntroDisplay ? 'cache-or-resolve' : 'api-resolve'
       })
-
-      try {
-        const imgUrl = `${webAppUrl}/api/workout-categories/workout-setting-images`
-        const imgResponse = await this.deps.fetchWithTimeout(
-          imgUrl,
-          { method: 'GET', headers: { 'Content-Type': 'application/json', ...authHeaders } },
-          4000
-        )
-        log('[handlePlayIntro] 사용자 이미지 응답:', imgResponse.status)
-        if (imgResponse.ok) {
-          const imgResult = await imgResponse.json().catch(() => null)
-          introLeftImageUrl = imgResult?.data?.leftImageUrl || ''
-          introRightImageUrl = imgResult?.data?.rightImageUrl || ''
-          log('[handlePlayIntro] 사용자 이미지 URL:', { left: introLeftImageUrl, right: introRightImageUrl })
-        }
-      } catch (err) {
-        console.error('[handlePlayIntro] 사용자 이미지 조회 실패:', err)
-      }
-
-      if (!introLeftImageUrl || !introRightImageUrl) {
-        log('[handlePlayIntro] 시스템 기본 이미지 fallback 시도')
-        try {
-          const sysResponse = await this.deps.fetchWithTimeout(
-            `${webAppUrl}/api/workout-categories/system-default-images/public`,
-            { method: 'GET', headers: { 'Content-Type': 'application/json', ...authHeaders } },
-            4000
-          )
-          log('[handlePlayIntro] 시스템 이미지 응답:', sysResponse.status)
-          if (sysResponse.ok) {
-            const sysResult = await sysResponse.json().catch(() => null)
-            if (!introLeftImageUrl) introLeftImageUrl = sysResult?.data?.leftImageUrl || ''
-            if (!introRightImageUrl) introRightImageUrl = sysResult?.data?.rightImageUrl || ''
-            log('[handlePlayIntro] 시스템 이미지 URL:', { left: introLeftImageUrl, right: introRightImageUrl })
-          }
-        } catch (err) {
-          console.error('[handlePlayIntro] 시스템 이미지 조회 실패:', err)
-        }
-      }
-      log('[handlePlayIntro] 최종 이미지 URL:', { left: introLeftImageUrl, right: introRightImageUrl })
 
       this.deps.broadcastToAllWindows('intro-started', {
         sequences: mainSequences,
         syncStartAtMs: Date.now(),
         metadata: this.activePlaySession.metadata,
-        leftImageUrl: introLeftImageUrl,
-        rightImageUrl: introRightImageUrl
+        leftImageUrl: introDisplay.leftImageUrl,
+        rightImageUrl: introDisplay.rightImageUrl,
+        centerImageUrl: introDisplay.centerImageUrl,
+        displayText: introDisplay.displayText,
+        introDisplay
       })
       this.introStartBlocksPlayStart = true
       this.introWasPlayed = true
@@ -619,6 +690,59 @@ export class WorkoutPlayService {
       console.error('인트로 시작 실패:', error)
       return { success: false, error: error instanceof Error ? error.message : '알 수 없는 오류' }
     }
+  }
+
+  /** 인트로 UI(선택보기) — 운동 시작 전까지 유지 (영상 1회 재생 종료와 무관) */
+  private isIntroSelectViewAllowed(): boolean {
+    if (!this.activePlaySession) return false
+    if (this.activePlaySession.status !== 'ready') return false
+    return this.introStartBlocksPlayStart || this.introWasPlayed
+  }
+
+  private findIntroSequenceForPosition(position: string): ExerciseSequence | null {
+    if (!this.activePlaySession) return null
+    const normalized = normalizeGridPosition(position)
+    const candidates = this.activePlaySession.sequences.filter(
+      (s) =>
+        s.exercise_type === 'exercise' &&
+        s.exercise_name !== '임시운동' &&
+        s.duration > 0,
+    )
+    return (
+      candidates.find((s) => normalizeGridPosition(String(s.position || '')) === normalized) ?? null
+    )
+  }
+
+  handleIntroFocus(data: { zone?: string; number?: number; positionCode?: string }): {
+    success: boolean
+    error?: string
+    positionCode?: string
+  } {
+    if (!this.isIntroSelectViewAllowed()) {
+      return { success: false, error: '인트로 재생 중에만 선택보기를 사용할 수 있습니다.' }
+    }
+
+    const target = parseIntroFocusCommandPayload(data)
+    if (!target) {
+      return { success: false, error: '유효하지 않은 선택입니다. A/B/C와 1~6을 선택해주세요.' }
+    }
+
+    const sequence = this.findIntroSequenceForPosition(target.internalPosition)
+    if (!sequence) {
+      return { success: false, error: `선택한 ${target.positionCode} 영상을 찾을 수 없습니다.` }
+    }
+
+    this.deps.broadcastToAllWindows('intro-focus', { target, sequence })
+    return { success: true, positionCode: target.positionCode }
+  }
+
+  handleIntroFocusCancel(): { success: boolean; error?: string } {
+    if (!this.isIntroSelectViewAllowed()) {
+      return { success: false, error: '인트로 재생 중에만 선택보기를 사용할 수 있습니다.' }
+    }
+
+    this.deps.broadcastToAllWindows('intro-focus-cancel', {})
+    return { success: true }
   }
 
   broadcastWorkoutPlayPreview() {
@@ -660,13 +784,9 @@ export class WorkoutPlayService {
       const allPositionGroups: { [key: string]: any[] } = {}
       uniqueExercises.forEach((item, idx) => {
         const posItem = { ...item, position: `${dsPrefix}${idx + 1}` }
-        const slotIndex = idx + 1
-        const leftPos = `L${slotIndex}`
-        const rightPos = `R${slotIndex}`
-        if (!allPositionGroups[leftPos]) allPositionGroups[leftPos] = []
-        if (!allPositionGroups[rightPos]) allPositionGroups[rightPos] = []
-        allPositionGroups[leftPos].push(posItem)
-        allPositionGroups[rightPos].push(posItem)
+        const gridPos = `A${idx + 1}`
+        if (!allPositionGroups[gridPos]) allPositionGroups[gridPos] = []
+        allPositionGroups[gridPos].push(posItem)
       })
 
       this.deps.broadcastToAllWindows('workout-play-preview', {

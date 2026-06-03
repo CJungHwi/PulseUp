@@ -134,10 +134,8 @@ export class ReadyModule implements WorkoutModule {
     const allPositionGroups: { [key: string]: any[] } = {}
     unique.forEach((item, idx) => {
       const posItem = { ...item, position: `${prefix}${idx + 1}` }
-      const leftPos = `L${idx + 1}`
-      const rightPos = `R${idx + 1}`
-      allPositionGroups[leftPos] = [posItem]
-      allPositionGroups[rightPos] = [posItem]
+      const gridPos = `A${idx + 1}`
+      allPositionGroups[gridPos] = [posItem]
     })
 
     log(`🎬 [ReadyModule] 다음 ${prefix} 구간 프리뷰 (${unique.length}개 운동)`)

@@ -102,7 +102,7 @@ BEGIN
         SET v_exercise_id = JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.originalExerciseId'));
         SET v_duration = JSON_EXTRACT(v_current_exercise, '$.duration');
         SET v_round = IFNULL(JSON_EXTRACT(v_current_exercise, '$.round'), 1);
-        SET v_position = IFNULL(JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.position')), 'L1');
+        SET v_position = IFNULL(JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.position')), 'A1');
         
         INSERT INTO workout_history_detail (
             workout_history_master_id,

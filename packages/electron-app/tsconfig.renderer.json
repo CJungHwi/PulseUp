@@ -11,12 +11,14 @@
   },
   "include": [
     "src/renderer/**/*",
-    "src/types/**/*"
+    "src/types/**/*",
+    "src/common/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "src/main",
-    "src/preload.ts"
+    "src/preload.ts",
+    "**/*.test.ts"
   ]
 }

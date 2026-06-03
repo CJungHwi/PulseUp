@@ -57,7 +57,7 @@ const VideoMonitor: React.FC<VideoMonitorProps> = ({
         return { duration: 240, title: '영상 설명' } // 4분
       case 'dynamic':
         const dynamicGroup = getDynamicGroup(currentGroupIndex)
-        // Stretching은 동시 재생이므로 최대값 사용 (L1~L6 중 가장 긴 시간)
+        // Stretching은 동시 재생이므로 최대값 사용 (A1~A6 중 가장 긴 시간)
         const dynamicDuration = dynamicGroup.length > 0
           ? Math.max(...dynamicGroup.map(ex => ex.duration))
           : 0
@@ -67,7 +67,7 @@ const VideoMonitor: React.FC<VideoMonitorProps> = ({
         return { duration: mainDuration, title: 'Power Circuit' }
       case 'static':
         const staticGroup = getStaticGroup(currentGroupIndex)
-        // Stretching은 동시 재생이므로 최대값 사용 (L1~L6 중 가장 긴 시간)
+        // Stretching은 동시 재생이므로 최대값 사용 (A1~A6 중 가장 긴 시간)
         const staticDuration = staticGroup.length > 0
           ? Math.max(...staticGroup.map(ex => ex.duration))
           : 0
@@ -229,10 +229,12 @@ const VideoMonitor: React.FC<VideoMonitorProps> = ({
       if (ex.position) {
         positionMap[ex.position] = ex
 
-        // Stretching 단계에서는 L 위치를 R에도 복제
-        if ((phase === 'dynamic' || phase === 'static') && ex.position.startsWith('L')) {
-          const rPosition = ex.position.replace('L', 'R')
-          positionMap[rPosition] = ex
+        // Stretching: DS1-3 → 좌측 num1-3 슬롯에 우측 num4-6 미러 (동일 half 내)
+        if ((phase === 'dynamic' || phase === 'static') && ex.position.startsWith('DS')) {
+          const dsNum = parseInt(ex.position.replace('DS', ''), 10)
+          if (dsNum >= 1 && dsNum <= 3) {
+            positionMap[`DS${dsNum + 3}`] = ex
+          }
         }
       }
     })
@@ -295,7 +297,7 @@ const VideoMonitor: React.FC<VideoMonitorProps> = ({
           p: 2
         }}
       >
-        {/* 모니터 1 (좌측) - L1~L6 */}
+        {/* 모니터 1 (좌측) - num 1-3: A1~A3, B1~B3 */}
         <Box
           sx={{
             flex: 1,
@@ -305,7 +307,7 @@ const VideoMonitor: React.FC<VideoMonitorProps> = ({
             gap: 2
           }}
         >
-          {['L1', 'L2', 'L3', 'L4', 'L5', 'L6'].map(position => {
+          {['A1', 'A2', 'A3', 'B1', 'B2', 'B3'].map(position => {
             const exercise = exercisesByPosition[position]
             const embedUrl = exercise ? getVideoEmbedUrl(exercise) : null
 
@@ -373,7 +375,7 @@ const VideoMonitor: React.FC<VideoMonitorProps> = ({
           })}
         </Box>
 
-        {/* 모니터 3 (우측) - R1~R6 */}
+        {/* 모니터 3 (우측) - num 4-6: A4~A6, B4~B6 */}
         <Box
           sx={{
             flex: 1,
@@ -383,7 +385,7 @@ const VideoMonitor: React.FC<VideoMonitorProps> = ({
             gap: 2
           }}
         >
-          {['R1', 'R2', 'R3', 'R4', 'R5', 'R6'].map(position => {
+          {['A4', 'A5', 'A6', 'B4', 'B5', 'B6'].map(position => {
             const exercise = exercisesByPosition[position]
             const embedUrl = exercise ? getVideoEmbedUrl(exercise) : null
 

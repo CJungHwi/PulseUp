@@ -4,17 +4,16 @@ import type { ExerciseSequence } from '../../../types'
 import type { PreloadManager } from '../shared/preload-manager'
 import { preloadAmrapFromTimeline, preloadCoolDownForAmrap } from './amrap-preload'
 import { getScreenMode } from '../../../screen-mode-store'
+import {
+  DEFAULT_GRID_POSITION,
+  normalizeGridPosition,
+} from '../../../../common/grid-position-codes.js'
+import { getMainHalfGroupIndexFromPosition, isSecondMainHalfPosition } from '../shared/main-half-group-utils'
 
 const isRestOrWaterType = (t: string | undefined): boolean =>
   t === 'rest' || t === 'water'
 
-const normalizeLrGridPosition = (raw: unknown): string => {
-  const s = String(raw ?? '').trim()
-  const m = s.match(/^([lLrR])(\d+)$/)
-  if (!m) return s || 'L1'
-  const side = m[1].toUpperCase() === 'L' ? 'L' : 'R'
-  return `${side}${m[2]}`
-}
+const normalizeMainGridPosition = normalizeGridPosition
 
 /**
  * AMRAP 메인만: 마지막 메인 블록 다음에 오는 휴식/물보충은 재생하지 않고,
@@ -66,8 +65,7 @@ export const runAmrapRestOrWater = (
     .slice(0, currentIndex)
     .filter((s) => s.exercise_type === 'exercise' && s.round > 0 && s.round < 99)
   const lastExPos = prevExercises.length > 0 ? (prevExercises[prevExercises.length - 1].position || '') : ''
-  const posM = lastExPos.match(/^[LR](\d+)$/i)
-  const amrapRestGroupIndex = posM ? Math.floor((parseInt(posM[1], 10) - 1) / 3) : 0
+  const amrapRestGroupIndex = getMainHalfGroupIndexFromPosition(lastExPos)
   const activeSet: ActiveSet = {
     left: amrapRestGroupIndex > 0 ? 'set2' : 'set1',
     right: amrapRestGroupIndex > 0 ? 'set2' : 'set1',
@@ -119,12 +117,10 @@ export const runAmrapMainRound = (
     })),
   })
 
-  // Loop/EMOM과 동일: L4~ 후반 블록 진입 시 슬롯 큐를 한 칸 진행 (전반 L1~R1 → 후반 L4~R4 영상 전환)
-  const amrapHalfGroupIndex: 0 | 1 = allRoundExercises.some((s) => {
-    const m = (s.position || '').match(/^([LR])(\d+)$/i)
-    if (!m) return false
-    return parseInt(m[2], 10) >= 4
-  })
+  // Loop/EMOM과 동일: B* 후반 블록 진입 시 슬롯 큐를 한 칸 진행 (A* → B* 영상 전환)
+  const amrapHalfGroupIndex: 0 | 1 = allRoundExercises.some((s) =>
+    isSecondMainHalfPosition(String(s.position || '')),
+  )
     ? 1
     : 0
 
@@ -141,7 +137,7 @@ export const runAmrapMainRound = (
     }
   }
 
-  // 예시2(2-6): L4 슬롯이 없어 halfGroup 이 0으로 유지됨. 큐는 라운드별 블록이 따로 있으므로 Round 1→2 전환 시 한 칸 advance 필요.
+  // 예시2(2-6): 후반 B* 블록 없이 라운드만 바뀌면 큐 블록도 한 칸 advance 필요.
   const lastPlayedAmrapRound = ctx._lastAmrapMainRoundNumber
   const needSameSlotRoundAdvance =
     lastPlayedAmrapRound != null &&
@@ -151,7 +147,7 @@ export const runAmrapMainRound = (
     if (isFiveScreenMode) {
       log('🎬 [AmrapModule] 5-screen: 동일 슬롯 라운드 advance 생략')
     } else {
-      log('🎬 [AmrapModule] 동일 L1~R1 슬롯으로 메인 라운드만 증가(예: 설정2·운동6) — 슬롯 advance')
+      log('🎬 [AmrapModule] 동일 A* 슬롯으로 메인 라운드만 증가(예: 설정2·운동6) — 슬롯 advance')
       ctx.broadcastToAllWindows('workout-advance-slots', { slots: [1, 2, 3] })
     }
   }
@@ -176,7 +172,7 @@ export const runAmrapMainRound = (
       round: seq.round,
       totalRounds: ctx.activePlaySession!.totalRounds,
       duration: seq.duration,
-      position: normalizeLrGridPosition(seq.position || 'L1'),
+      position: normalizeMainGridPosition(seq.position || DEFAULT_GRID_POSITION),
       activeSet,
       sequenceIndex: currentIndex,
       totalSequences: ctx.activePlaySession!.sequences.length,

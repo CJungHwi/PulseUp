@@ -26,6 +26,7 @@ import { updateWorkoutTimerActivityLabel } from './workout-play-timer-activity-l
 import {
   resumeSequenceCountdown,
   startPreWorkoutCountdown,
+  startSessionReadyCountdown,
   startSequenceCountdown,
   updateTimerCountdownDisplay,
   type WorkoutTimerCountdownDeps,
@@ -206,6 +207,19 @@ export class WorkoutPlayTimerUI {
   // 시작 카운트다운: 5, 4, 3, 2, 1, START (총 6초)
   startCountdownBeforeStart(callback: () => void) {
     startPreWorkoutCountdown(this.createCountdownDeps(), callback)
+  }
+
+  /** 운동 시작(session-start) — 타이머 패널 READY 영역에서 카운트 */
+  startSessionReadyCountdown(totalSeconds: number) {
+    startSessionReadyCountdown(this.createCountdownDeps(), totalSeconds)
+  }
+
+  /** Ready/시작 카운트다운 중단 */
+  cancelReadyCountdown() {
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval)
+      this.countdownInterval = null
+    }
   }
 
   // 인트로 모드 표시
@@ -545,10 +559,7 @@ export class WorkoutPlayTimerUI {
   }
 
   destroy() {
-    if (this.countdownInterval) {
-      clearInterval(this.countdownInterval)
-      this.countdownInterval = null
-    }
+    this.cancelReadyCountdown()
   }
 
   // 심박수 업데이트 메서드 (더 이상 사용하지 않음 - setupHeartRateListener에서 처리)

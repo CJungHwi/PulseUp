@@ -120,7 +120,7 @@ const MenuManager: React.FC = () => {
     return ids;
   };
 
-  const loadMenuTree = async (tabId: MenuManagerTabId) => {
+  const loadTabMenuTree = async (tabId: MenuManagerTabId) => {
     try {
       const { menuTreeAudience } = MENU_MANAGER_TABS[tabId];
       const response = await menuApi.getAdminMenuTreeByAudience(menuTreeAudience);
@@ -179,7 +179,7 @@ const MenuManager: React.FC = () => {
 
   useEffect(() => {
     MENU_MANAGER_TAB_ORDER.forEach((tabId) => {
-      loadMenuTree(tabId);
+      loadTabMenuTree(tabId);
     });
   }, []);
 

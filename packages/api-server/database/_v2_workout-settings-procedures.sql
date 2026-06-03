@@ -151,7 +151,7 @@ CREATE OR REPLACE PROCEDURE sp_GetMonitorDefaultImageProfile(
     IN p_owner_user_id CHAR(36)
 )
 BEGIN
-    SELECT side, image_url
+    SELECT image_kind, side, image_url
     FROM monitor_default_image_profile
     WHERE owner_user_id = p_owner_user_id
       AND is_active = TRUE;
@@ -159,12 +159,13 @@ END //
 
 CREATE OR REPLACE PROCEDURE sp_UpsertMonitorDefaultImageProfile(
     IN p_owner_user_id CHAR(36),
+    IN p_image_kind VARCHAR(10),
     IN p_side VARCHAR(10),
     IN p_image_url VARCHAR(2048)
 )
 BEGIN
-    INSERT INTO monitor_default_image_profile (owner_user_id, side, image_url, is_active)
-    VALUES (p_owner_user_id, p_side, p_image_url, TRUE)
+    INSERT INTO monitor_default_image_profile (owner_user_id, image_kind, side, image_url, is_active)
+    VALUES (p_owner_user_id, p_image_kind, p_side, p_image_url, TRUE)
     ON DUPLICATE KEY UPDATE
         image_url = VALUES(image_url),
         is_active = TRUE,
@@ -173,27 +174,55 @@ END //
 
 CREATE OR REPLACE PROCEDURE sp_DeleteMonitorDefaultImageProfileSide(
     IN p_owner_user_id CHAR(36),
+    IN p_image_kind VARCHAR(10),
     IN p_side VARCHAR(10)
 )
 BEGIN
     DELETE FROM monitor_default_image_profile
-    WHERE owner_user_id = p_owner_user_id AND side = p_side;
+    WHERE owner_user_id = p_owner_user_id
+      AND image_kind = p_image_kind
+      AND side = p_side;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_GetMonitorDisplayTextProfile(
+    IN p_owner_user_id CHAR(36)
+)
+BEGIN
+    SELECT display_text
+    FROM monitor_display_text_profile
+    WHERE owner_user_id = p_owner_user_id
+      AND is_active = TRUE
+    LIMIT 1;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_UpsertMonitorDisplayTextProfile(
+    IN p_owner_user_id CHAR(36),
+    IN p_display_text VARCHAR(500)
+)
+BEGIN
+    INSERT INTO monitor_display_text_profile (owner_user_id, display_text, is_active)
+    VALUES (p_owner_user_id, IFNULL(p_display_text, ''), TRUE)
+    ON DUPLICATE KEY UPDATE
+        display_text = VALUES(display_text),
+        is_active = TRUE,
+        updated_at = CURRENT_TIMESTAMP;
 END //
 
 CREATE OR REPLACE PROCEDURE sp_GetSystemDefaultImages()
 BEGIN
-    SELECT side, image_url
+    SELECT image_kind, side, image_url
     FROM system_default_image
     WHERE is_active = TRUE;
 END //
 
 CREATE OR REPLACE PROCEDURE sp_UpsertSystemDefaultImage(
+    IN p_image_kind VARCHAR(10),
     IN p_side VARCHAR(10),
     IN p_image_url VARCHAR(2048)
 )
 BEGIN
-    INSERT INTO system_default_image (side, image_url, is_active)
-    VALUES (p_side, p_image_url, TRUE)
+    INSERT INTO system_default_image (image_kind, side, image_url, is_active)
+    VALUES (p_image_kind, p_side, p_image_url, TRUE)
     ON DUPLICATE KEY UPDATE
         image_url = VALUES(image_url),
         is_active = TRUE,
@@ -201,10 +230,158 @@ BEGIN
 END //
 
 CREATE OR REPLACE PROCEDURE sp_DeleteSystemDefaultImageSide(
+    IN p_image_kind VARCHAR(10),
     IN p_side VARCHAR(10)
 )
 BEGIN
-    DELETE FROM system_default_image WHERE side = p_side;
+    DELETE FROM system_default_image
+    WHERE image_kind = p_image_kind AND side = p_side;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_GetSystemDisplayText()
+BEGIN
+    SELECT display_text
+    FROM system_display_text
+    WHERE is_active = TRUE
+    ORDER BY updated_at DESC
+    LIMIT 1;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_UpsertSystemDisplayText(
+    IN p_display_text VARCHAR(500)
+)
+BEGIN
+    IF EXISTS (SELECT 1 FROM system_display_text LIMIT 1) THEN
+        UPDATE system_display_text
+        SET display_text = IFNULL(p_display_text, ''),
+            is_active = TRUE,
+            updated_at = CURRENT_TIMESTAMP
+        ORDER BY updated_at DESC
+        LIMIT 1;
+    ELSE
+        INSERT INTO system_display_text (display_text, is_active)
+        VALUES (IFNULL(p_display_text, ''), TRUE);
+    END IF;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_GetWorkoutExerciseMonitorConfig(
+    IN p_master_id VARCHAR(36)
+)
+BEGIN
+    SELECT exercise_id, image_kind, side, image_url, display_text
+    FROM workout_exercise_monitor_config
+    WHERE workout_history_master_id = p_master_id;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_SaveWorkoutExerciseMonitorConfig(
+    IN p_master_id VARCHAR(36),
+    IN p_configs_json JSON
+)
+BEGIN
+    DECLARE v_idx INT DEFAULT 0;
+    DECLARE v_len INT DEFAULT 0;
+    DECLARE v_exercise_id VARCHAR(255);
+    DECLARE v_image_kind VARCHAR(10);
+    DECLARE v_side VARCHAR(10);
+    DECLARE v_image_url VARCHAR(2048);
+    DECLARE v_display_text VARCHAR(500);
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    DELETE FROM workout_exercise_monitor_config
+    WHERE workout_history_master_id = p_master_id;
+
+    SET v_len = IFNULL(JSON_LENGTH(p_configs_json), 0);
+
+    WHILE v_idx < v_len DO
+        SET v_exercise_id = JSON_UNQUOTE(JSON_EXTRACT(p_configs_json, CONCAT('$[', v_idx, '].exerciseId')));
+        SET v_image_kind = NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p_configs_json, CONCAT('$[', v_idx, '].imageKind'))), 'null');
+        SET v_side = NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p_configs_json, CONCAT('$[', v_idx, '].side'))), 'null');
+        SET v_image_url = NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p_configs_json, CONCAT('$[', v_idx, '].imageUrl'))), 'null');
+        SET v_display_text = NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p_configs_json, CONCAT('$[', v_idx, '].displayText'))), 'null');
+
+        IF v_exercise_id IS NOT NULL AND v_exercise_id <> '' THEN
+            INSERT INTO workout_exercise_monitor_config (
+                workout_history_master_id, exercise_id, image_kind, side, image_url, display_text
+            ) VALUES (
+                p_master_id, v_exercise_id, v_image_kind, v_side, v_image_url, v_display_text
+            );
+        END IF;
+
+        SET v_idx = v_idx + 1;
+    END WHILE;
+
+    COMMIT;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_GetWorkoutMonitorDisplayImages(
+    IN p_master_id VARCHAR(36)
+)
+BEGIN
+    SELECT image_kind, side, image_url
+    FROM workout_monitor_display_image
+    WHERE workout_history_master_id = p_master_id
+      AND is_active = TRUE;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_GetWorkoutMonitorDisplayText(
+    IN p_master_id VARCHAR(36)
+)
+BEGIN
+    SELECT display_text
+    FROM workout_monitor_display_text
+    WHERE workout_history_master_id = p_master_id
+      AND is_active = TRUE
+    LIMIT 1;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_UpsertWorkoutMonitorDisplayImage(
+    IN p_master_id VARCHAR(36),
+    IN p_image_kind VARCHAR(10),
+    IN p_side VARCHAR(10),
+    IN p_image_url VARCHAR(2048)
+)
+BEGIN
+    INSERT INTO workout_monitor_display_image (
+        workout_history_master_id, image_kind, side, image_url, is_active
+    ) VALUES (
+        p_master_id, p_image_kind, p_side, p_image_url, TRUE
+    )
+    ON DUPLICATE KEY UPDATE
+        image_url = VALUES(image_url),
+        is_active = TRUE,
+        updated_at = CURRENT_TIMESTAMP;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_DeleteWorkoutMonitorDisplayImageSide(
+    IN p_master_id VARCHAR(36),
+    IN p_image_kind VARCHAR(10),
+    IN p_side VARCHAR(10)
+)
+BEGIN
+    DELETE FROM workout_monitor_display_image
+    WHERE workout_history_master_id = p_master_id
+      AND image_kind = p_image_kind
+      AND side = p_side;
+END //
+
+CREATE OR REPLACE PROCEDURE sp_UpsertWorkoutMonitorDisplayText(
+    IN p_master_id VARCHAR(36),
+    IN p_display_text VARCHAR(500)
+)
+BEGIN
+    INSERT INTO workout_monitor_display_text (workout_history_master_id, display_text, is_active)
+    VALUES (p_master_id, IFNULL(p_display_text, ''), TRUE)
+    ON DUPLICATE KEY UPDATE
+        display_text = VALUES(display_text),
+        is_active = TRUE,
+        updated_at = CURRENT_TIMESTAMP;
 END //
 
 DELIMITER ;

@@ -383,14 +383,29 @@ export class AuthService {
 
         await connection.execute(
           `INSERT INTO monitor_default_image_profile (
-              owner_user_id, side, image_url, is_active
+              owner_user_id, image_kind, side, image_url, is_active
            )
            SELECT
-              ?, side, image_url, is_active
+              ?, image_kind, side, image_url, is_active
            FROM monitor_default_image_profile
            WHERE owner_user_id = ?
            ON DUPLICATE KEY UPDATE
               image_url = VALUES(image_url),
+              is_active = VALUES(is_active),
+              updated_at = CURRENT_TIMESTAMP`,
+          [newUserId, seedAdminId]
+        )
+
+        await connection.execute(
+          `INSERT INTO monitor_display_text_profile (
+              owner_user_id, display_text, is_active
+           )
+           SELECT
+              ?, display_text, is_active
+           FROM monitor_display_text_profile
+           WHERE owner_user_id = ?
+           ON DUPLICATE KEY UPDATE
+              display_text = VALUES(display_text),
               is_active = VALUES(is_active),
               updated_at = CURRENT_TIMESTAMP`,
           [newUserId, seedAdminId]

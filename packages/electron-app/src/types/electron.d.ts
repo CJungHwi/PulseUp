@@ -104,6 +104,9 @@ export interface ElectronAPI {
   onCountdownStarted: (callback: (data: { phase?: 'session-start' | 'segment-transition' }) => void) => void
   onIntroStarted: (callback: (data: any) => void) => void
   onIntroCancelledResetToReady: (callback: (data?: { showSplash?: boolean }) => void) => void
+  onIntroFocus: (callback: (data: { target: any }) => void) => void
+  onIntroFocusCancel: (callback: () => void) => void
+  onMonitorDisplayUpdated: (callback: (data: { display: any; context?: string }) => void) => void
   onWindowModeChanged: (callback: (data: { isFullscreen: boolean }) => void) => void
   onConfigUpdated?: (callback: (config: { displayLabel?: string }) => void) => void
 

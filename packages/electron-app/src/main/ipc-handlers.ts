@@ -573,8 +573,20 @@ export class IPCHandlers {
     return this.playService.handlePlayIntro()
   }
 
+  handleIntroFocus(data: { zone?: string; number?: number; positionCode?: string }) {
+    return this.playService.handleIntroFocus(data)
+  }
+
+  handleIntroFocusCancel() {
+    return this.playService.handleIntroFocusCancel()
+  }
+
   handleIntroPlaybackEnded() {
     return this.playService.handleIntroPlaybackEnded()
+  }
+
+  handleCancelIntro() {
+    return this.playService.handleCancelIntro()
   }
 
   async handlePlayPauseToggle() {

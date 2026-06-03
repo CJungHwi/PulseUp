@@ -1,3 +1,9 @@
+/**
+ * WorkoutEditor — 일자별 트레이닝 등록/편집 패널
+ * - 운동 목록: 행 전체 드래그 → 행 사이 드롭 슬롯에 놓으면 순서 변경 (onReorderExercise)
+ * - Main 탭: AMRAP/EMOM 및 stress/loop 서킷에서 운동별 횟수(reps) 편집
+ * - 이미지 설정 탭: 일자별 운동 기록 모니터 표시 (WorkoutMonitorDisplayPanel)
+ */
 import React from 'react'
 import { DATE_FORMATS } from '@/lib/constants'
 import {
@@ -16,7 +22,7 @@ import {
     Repeat,
     Trash2,
     X,
-    Save
+    Save,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import dayjs, { Dayjs } from 'dayjs'
@@ -57,6 +63,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { Exercise, PanelRow, WorkoutMaster, WorkoutTimeSummary } from './types'
 import { VimeoFitIframe } from '../../../../components/VimeoFitIframe/VimeoFitIframe'
+import { WorkoutMonitorDisplayPanel } from './WorkoutMonitorDisplayPanel'
+import type { MonitorDisplayProfileState } from '@/pages/WorkoutSettings/components/MonitorDisplayTabs'
 
 interface WorkoutEditorProps {
     // Common
@@ -131,6 +139,13 @@ interface WorkoutEditorProps {
     currentEditingMasterId: string | null
     /** 불러온 기록의 서킷 타입 — stress↔loop 전환 시 저장된 totalSeconds 대신 라이브 합계 사용 */
     originalCircuitType: string | null
+
+    /** 일자별 운동 기록 모니터 표시 설정 */
+    workoutMonitorDisplay: MonitorDisplayProfileState
+    onWorkoutMonitorDisplayChange: (profile: MonitorDisplayProfileState) => void
+
+    /** WorkoutSettings 에 등록된 기본 횟수 (stress/loop/AMRAP/EMOM) */
+    defaultRepsFromSettings?: number
 }
 
 export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
@@ -185,12 +200,16 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
     isAdmin,
     setIsAdmin,
     currentEditingMasterId,
-    originalCircuitType
+    originalCircuitType,
+    workoutMonitorDisplay,
+    onWorkoutMonitorDisplayChange,
+    defaultRepsFromSettings = 10,
 }) => {
-    const { isAdmin: isUserAdmin } = useAuth()
+    const { isSuperAdmin } = useAuth()
     const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false)
     const [draggedRowIndex, setDraggedRowIndex] = React.useState<number | null>(null)
-    const [dragOverRowIndex, setDragOverRowIndex] = React.useState<number | null>(null)
+    /** 행 사이 삽입 위치 (0 = 맨 위, list.length = 맨 아래) */
+    const [dropInsertIndex, setDropInsertIndex] = React.useState<number | null>(null)
     /** DS/CD 시간(초): 키보드로 여러 자리 입력 시 중간 값(예: 3)이 min 조건에 막히지 않도록 포커스 중만 로컬 문자열로 편집 */
     const [dsCdDurationDraft, setDsCdDurationDraft] = React.useState<{ exerciseId: string; text: string } | null>(null)
 
@@ -256,11 +275,15 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
         return labels
     }, [workoutCategories])
 
+    const workoutTabTriggerClass =
+        'rounded-md px-4 h-7 text-xs font-bold transition-all text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-blue-800 dark:data-[state=active]:text-blue-200 data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-blue-700/40 dark:data-[state=active]:ring-blue-400/50'
+
     function getTabExercises(tab: string): Exercise[] {
         switch (tab) {
             case 'dynamic': return dynamicExercises
             case 'cooldown': return coolDownExercises
             case 'all': return [...dynamicExercises, ...exercises, ...coolDownExercises]
+            case 'image-settings': return []
             default: return exercises
         }
     }
@@ -314,6 +337,13 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
         majorCategory === 'MAIN' &&
         (circuitType === 'stress' || circuitType === 'loop')
     const isAMRAPorEMOM = majorUpper === 'AMRAP' || majorUpper === 'EMOM' || rightUpper === 'AMRAP' || rightUpper === 'EMOM'
+    /** MAIN stress/loop — AMRAP/EMOM 과 동일하게 운동별 횟수 컬럼 표시 */
+    const isMainStressOrLoopReps =
+        majorUpper === 'MAIN' &&
+        rightUpper !== 'AMRAP' &&
+        rightUpper !== 'EMOM' &&
+        (circuitType === 'stress' || circuitType === 'loop')
+    const showMainRepsColumn = isAMRAPorEMOM || isMainStressOrLoopReps
     const isAMRAPOnly = majorUpper === 'AMRAP' || rightUpper === 'AMRAP'
     const isMainSaveBlocked =
         majorUpper === 'MAIN' &&
@@ -327,8 +357,8 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
             return null
         }
 
-        if (isMain && isAMRAPorEMOM) {
-            const repsVal = ex.reps ?? 10
+        if (isMain && showMainRepsColumn) {
+            const repsVal = ex.reps ?? defaultRepsFromSettings
             if (activeTab === 'all') {
                 return <span className="text-xs font-medium">{repsVal}</span>
             }
@@ -472,48 +502,96 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
 
     function renderExerciseTable() {
         const list = getTabExercises(activeTab)
-        const showValueColumn = activeTab !== 'main' || isAMRAPorEMOM
-        /** EMOM/AMRAP일 때 '전체' 탭에서도 횟수 컬럼 표시 */
+        const showValueColumn = activeTab !== 'main' || showMainRepsColumn
+        /** EMOM/AMRAP·MAIN stress/loop 일 때 '전체' 탭에서도 횟수 컬럼 표시 */
         const effectiveShowValueColumn =
             (activeTab !== 'all' && showValueColumn) ||
-            (activeTab === 'all' && isAMRAPorEMOM)
+            (activeTab === 'all' && showMainRepsColumn)
         const emptyColSpan = effectiveShowValueColumn ? 8 : 7
+
+        const resolveReorderTargetIndex = (fromIndex: number, insertIndex: number) => {
+            let targetIndex = insertIndex
+            if (fromIndex < insertIndex) targetIndex -= 1
+            return targetIndex
+        }
 
         const handleDragStart = (event: React.DragEvent<HTMLTableRowElement>, index: number) => {
             if (activeTab === 'all') return
+            const target = event.target as HTMLElement | null
+            if (target?.closest('[data-row-drag-disabled]')) {
+                event.preventDefault()
+                return
+            }
+            event.stopPropagation()
             setDraggedRowIndex(index)
-            setDragOverRowIndex(index)
+            setDropInsertIndex(null)
             event.dataTransfer.effectAllowed = 'move'
+            event.dataTransfer.setData('text/plain', String(index))
         }
 
-        const handleDragOver = (event: React.DragEvent<HTMLTableRowElement>, index: number) => {
-            if (activeTab === 'all') return
+        const handleDragOverInsert = (event: React.DragEvent<HTMLTableRowElement>, insertIndex: number) => {
+            if (activeTab === 'all' || draggedRowIndex === null) return
             event.preventDefault()
+            event.stopPropagation()
             event.dataTransfer.dropEffect = 'move'
-            setDragOverRowIndex(index)
+            setDropInsertIndex(insertIndex)
         }
 
-        const handleDrop = (
+        const handleDropAtInsert = (
             event: React.DragEvent<HTMLTableRowElement>,
-            dropIndex: number,
+            insertIndex: number,
             listType: 'main' | 'dynamic' | 'cooldown'
         ) => {
             if (activeTab === 'all') return
             event.preventDefault()
-            if (draggedRowIndex === null || draggedRowIndex === dropIndex) {
-                setDraggedRowIndex(null)
-                setDragOverRowIndex(null)
+            event.stopPropagation()
+            if (draggedRowIndex === null) {
+                setDropInsertIndex(null)
                 return
             }
-            onReorderExercise(draggedRowIndex, dropIndex, listType)
+            const targetIndex = resolveReorderTargetIndex(draggedRowIndex, insertIndex)
+            if (draggedRowIndex !== targetIndex) {
+                onReorderExercise(draggedRowIndex, targetIndex, listType)
+            }
             setDraggedRowIndex(null)
-            setDragOverRowIndex(null)
+            setDropInsertIndex(null)
         }
 
         const handleDragEnd = () => {
             setDraggedRowIndex(null)
-            setDragOverRowIndex(null)
+            setDropInsertIndex(null)
         }
+
+        const isReorderDisabled = activeTab === 'all'
+        const reorderListType = activeTab as 'main' | 'dynamic' | 'cooldown'
+
+        const renderDropSlot = (
+            insertIndex: number,
+            listType: 'main' | 'dynamic' | 'cooldown'
+        ) => (
+            <ShadcnTableRow
+                key={`drop-slot-${activeTab}-${insertIndex}`}
+                className="border-b-0 hover:bg-transparent"
+                onDragOver={(event) => handleDragOverInsert(event, insertIndex)}
+                onDrop={(event) => handleDropAtInsert(event, insertIndex, listType)}
+                onDragLeave={(event) => {
+                    if (event.currentTarget.contains(event.relatedTarget as Node)) return
+                    setDropInsertIndex((prev) => (prev === insertIndex ? null : prev))
+                }}
+            >
+                <ShadcnTableCell
+                    colSpan={emptyColSpan}
+                    className={cn(
+                        'p-0 h-2 border-b-0 transition-all',
+                        dropInsertIndex === insertIndex && draggedRowIndex !== null
+                            ? 'h-3 bg-primary/80'
+                            : draggedRowIndex !== null
+                                ? 'h-2 bg-primary/15'
+                                : 'h-0'
+                    )}
+                />
+            </ShadcnTableRow>
+        )
 
         const headCellClass = "h-[45px] px-2 text-xs font-bold text-center border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8] relative"
 
@@ -537,7 +615,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                         </ShadcnTableHead>
                         {effectiveShowValueColumn && (
                             <ShadcnTableHead className={headCellClass} style={{ width: colWidths.value }}>
-                                {isAMRAPorEMOM && (activeTab === 'main' || activeTab === 'all') ? '횟수' : '시간(초)'}
+                                {showMainRepsColumn && (activeTab === 'main' || activeTab === 'all') ? '횟수' : '시간(초)'}
                                 <ResizeHandle col="value" />
                             </ShadcnTableHead>
                         )}
@@ -573,32 +651,34 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                             </ShadcnTableCell>
                         </ShadcnTableRow>
                     ) : (
-                        list.map((ex, idx) => {
-                            const listType = activeTab === 'all' ? getListTypeForExercise(ex) : (activeTab as any as 'main' | 'dynamic' | 'cooldown')
-                            const isReorderDisabled = activeTab === 'all'
+                        <>
+                            {!isReorderDisabled && renderDropSlot(0, reorderListType)}
+                            {list.map((ex, idx) => {
+                            const listType = activeTab === 'all' ? getListTypeForExercise(ex) : reorderListType
 
                             return (
+                                <React.Fragment key={`${activeTab}_${ex.id}_${idx}`}>
                                 <ShadcnTableRow
-                                    key={`${activeTab}_${ex.id}_${idx}`}
-                                    className={cn(
-                                        "cursor-pointer h-[35px] border-b-0 group transition-colors",
-                                        "hover:text-blue-600 dark:hover:text-yellow-400 hover:bg-muted/30",
-                                        selectedExercise?.id === ex.id && "bg-primary/20",
-                                        draggedRowIndex === idx && "opacity-50",
-                                        dragOverRowIndex === idx && draggedRowIndex !== idx && "ring-1 ring-primary"
-                                    )}
-                                    onClick={() => setSelectedExercise(ex)}
                                     draggable={!isReorderDisabled}
                                     onDragStart={(event) => handleDragStart(event, idx)}
-                                    onDragOver={(event) => handleDragOver(event, idx)}
-                                    onDrop={(event) => handleDrop(event, idx, listType)}
                                     onDragEnd={handleDragEnd}
+                                    className={cn(
+                                        "h-[35px] border-b-0 group transition-colors",
+                                        !isReorderDisabled ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+                                        "hover:text-blue-600 dark:hover:text-yellow-400 hover:bg-muted/30",
+                                        selectedExercise?.id === ex.id && "bg-primary/20",
+                                        draggedRowIndex === idx && "opacity-40"
+                                    )}
+                                    onClick={() => setSelectedExercise(ex)}
                                 >
                                     <ShadcnTableCell className="h-[35px] py-0 px-2 text-xs text-center border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors">
-                                        {ex.position || `${idx + 1}`}
+                                        <span className="tabular-nums">{ex.position || `${idx + 1}`}</span>
                                     </ShadcnTableCell>
                                     {effectiveShowValueColumn && (
-                                        <ShadcnTableCell className="h-[35px] py-0 px-2 text-xs text-center border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors">
+                                        <ShadcnTableCell
+                                            data-row-drag-disabled
+                                            className="h-[35px] py-0 px-2 text-xs text-center border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors"
+                                        >
                                             {renderValueEditor(ex, listType)}
                                         </ShadcnTableCell>
                                     )}
@@ -618,7 +698,10 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                                         {ex.equipment || '-'}
                                     </ShadcnTableCell>
 
-                                    <ShadcnTableCell className="h-[35px] py-0 px-2 text-xs text-center sticky right-0 z-10 bg-[#f9fafb] dark:bg-[#1d1d1d] group-hover:bg-muted/30 shadow-[-4px_0_8px_rgba(0,0,0,0.05)] dark:shadow-[-2px_0_5px_rgba(0,0,0,0.1)]">
+                                    <ShadcnTableCell
+                                        data-row-drag-disabled
+                                        className="h-[35px] py-0 px-2 text-xs text-center sticky right-0 z-10 bg-[#f9fafb] dark:bg-[#1d1d1d] group-hover:bg-muted/30 shadow-[-4px_0_8px_rgba(0,0,0,0.05)] dark:shadow-[-2px_0_5px_rgba(0,0,0,0.1)]"
+                                    >
                                         <Button
                                             variant="outline"
                                             size="icon"
@@ -629,8 +712,11 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                                         </Button>
                                     </ShadcnTableCell>
                                 </ShadcnTableRow>
+                                {!isReorderDisabled && renderDropSlot(idx + 1, listType)}
+                                </React.Fragment>
                             )
-                        })
+                        })}
+                        </>
                     )}
                 </ShadcnTableBody>
             </ShadcnTable>
@@ -948,7 +1034,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                                 <StickyNote className="h-4 w-4 text-primary" />
                                 메모
                             </CardTitle>
-                            {isUserAdmin && (
+                            {isSuperAdmin && (
                                 <div className="flex items-center gap-2">
                                     <Checkbox id="admin-check" checked={isAdmin} onCheckedChange={(val) => setIsAdmin(!!val)} />
                                     <Label htmlFor="admin-check" className="text-xs font-bold whitespace-nowrap">관리자체크</Label>
@@ -1053,14 +1139,15 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
 
                 {/* Right Main (첨부 이미지 우측 영역) */}
                 <Card className="flex-1 flex flex-col min-w-0 min-h-0 border border-[#343637] dark:border-[#6b7280] shadow-md overflow-hidden">
-                    <CardHeader className="h-10 px-3 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0 border-[#343637] dark:border-[#6b7280]">
-                        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                            <div className="flex items-center justify-between">
-                                <TabsList className="bg-slate-100 dark:bg-slate-800/60 p-1 h-9 rounded-lg border border-[#343637] dark:border-slate-700/50 shadow-inner">
-                                    <TabsTrigger value="main" className="rounded-md px-4 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:text-blue-600 dark:data-[state=active]:text-blue-400 data-[state=active]:shadow-sm h-7 text-xs font-bold transition-all">{mainTabLabel}</TabsTrigger>
-                                    <TabsTrigger value="dynamic" className="rounded-md px-4 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:text-blue-600 dark:data-[state=active]:text-blue-400 data-[state=active]:shadow-sm h-7 text-xs font-bold transition-all">DYNAMIC STRETCHING</TabsTrigger>
-                                    <TabsTrigger value="cooldown" className="rounded-md px-4 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:text-blue-600 dark:data-[state=active]:text-blue-400 data-[state=active]:shadow-sm h-7 text-xs font-bold transition-all">COOL DOWN</TabsTrigger>
-                                    <TabsTrigger value="all" className="rounded-md px-4 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:text-blue-600 dark:data-[state=active]:text-blue-400 data-[state=active]:shadow-sm h-7 text-xs font-bold transition-all">전체</TabsTrigger>
+                    <CardHeader className="shrink-0 min-h-10 h-auto px-3 py-1.5 border-b bg-muted/30 flex flex-row items-center border-[#343637] dark:border-[#6b7280]">
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full min-w-0">
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                                <TabsList className="bg-slate-100 dark:bg-slate-800/60 p-1 h-auto min-h-9 rounded-lg flex flex-wrap justify-start max-w-full overflow-x-auto">
+                                    <TabsTrigger value="main" className={workoutTabTriggerClass}>{mainTabLabel}</TabsTrigger>
+                                    <TabsTrigger value="dynamic" className={workoutTabTriggerClass}>DYNAMIC STRETCHING</TabsTrigger>
+                                    <TabsTrigger value="cooldown" className={workoutTabTriggerClass}>COOL DOWN</TabsTrigger>
+                                    <TabsTrigger value="all" className={workoutTabTriggerClass}>전체</TabsTrigger>
+                                    <TabsTrigger value="image-settings" className={workoutTabTriggerClass}>이미지 설정</TabsTrigger>
                                 </TabsList>
                                 {savedWorkoutTimeSummary && (
                                     <span className="text-[10px] font-bold text-primary">저장됨: {formatDashboardTime(savedWorkoutTimeSummary.totalSeconds)}</span>
@@ -1068,10 +1155,19 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                             </div>
                         </Tabs>
                     </CardHeader>
-                    <CardContent className="flex-1 min-h-0 p-0">
-                        <div className="h-full overflow-auto scrollbar-hide">
-                            {renderExerciseTable()}
-                        </div>
+                    <CardContent className="flex flex-1 flex-col min-h-0 p-0">
+                        {activeTab === 'image-settings' ? (
+                            <div className="flex-1 min-h-[240px] overflow-auto scrollbar-hide">
+                                <WorkoutMonitorDisplayPanel
+                                    profile={workoutMonitorDisplay}
+                                    onProfileChange={onWorkoutMonitorDisplayChange}
+                                />
+                            </div>
+                        ) : (
+                            <div className="flex-1 min-h-0 overflow-auto scrollbar-hide">
+                                {renderExerciseTable()}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>

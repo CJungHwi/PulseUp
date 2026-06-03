@@ -1,8 +1,21 @@
 /// <reference path="../../types/electron.d.ts" />
 
 import { getGridCategoryDisplayName, normalizePanelCircuitType } from '../circuits/grid-display-registry.js'
+import {
+  getIntroSlotDefaultLabel,
+  internalPositionToDisplayCode,
+  mapGridPositionToDomSlot,
+  resolveIntroFocusForMonitor,
+  type IntroFocusTarget,
+} from '../circuits/intro-position-codes.js'
+import { normalizeGridPosition } from '../../common/grid-position-codes.js'
 import { clearAllWorkoutGridVideoCells, clearWorkoutGridVideoByPosition } from './workout-grid-cell-cleanup.js'
 import { buildWorkoutGridShellHtml } from './workout-grid-display-shell.js'
+import {
+  cancelIntroFocusInGrid,
+  focusIntroSlotInGrid,
+  type IntroFocusRuntimeState,
+} from './workout-grid-intro-focus.js'
 import { WorkoutGridPreloadStore } from './workout-grid-preload.js'
 import { workoutGridPlayVideo } from './workout-grid-play-core.js'
 import type { SlotVideoEntry } from './workout-grid-queue.js'
@@ -34,6 +47,8 @@ export class WorkoutGridDisplay {
   private readonly attachVimeoPlayerHandlers: AttachVimeoHandlersFn
   private circuitType: WorkoutCircuitType = 'stress'
   private lastCategoryLabelSource = ''
+  private isIntroLayout = false
+  private introFocusState: IntroFocusRuntimeState | null = null
 
   constructor(container: HTMLElement, side: WorkoutGridSide) {
     this.container = container
@@ -78,7 +93,13 @@ export class WorkoutGridDisplay {
    * 그리드를 재구성한다.
    * @param clearCache preloadCache를 함께 비울지 여부 (기본 false).
    */
-  render(isIntro: boolean = false, introImageUrl?: string, stretchingSlotCount: number = 0, clearCache: boolean = false) {
+  render(
+    isIntro: boolean = false,
+    introImageUrl?: string,
+    stretchingSlotCount: number = 0,
+    clearCache: boolean = false,
+    introFiveScreen: boolean = false,
+  ) {
     workoutInfoDevLog(
       `🔄 [WorkoutGridDisplay] render(isIntro=${isIntro}, stretchingSlotCount=${stretchingSlotCount}, clearCache=${clearCache}, cacheSize=${this.preloadStore.size})`,
     )
@@ -102,11 +123,16 @@ export class WorkoutGridDisplay {
     }
 
     this.stretchingSlotCount = stretchingSlotCount
+    this.isIntroLayout = isIntro
+    if (!isIntro) {
+      this.introFocusState = null
+    }
     this.container.innerHTML = buildWorkoutGridShellHtml({
       side: this.side,
       isIntro,
       introImageUrl,
       stretchingSlotCount,
+      introFiveScreen,
     })
     this.startHeartbeat()
   }
@@ -130,14 +156,12 @@ export class WorkoutGridDisplay {
 
   mapPositionToSlot(position: string): number {
     if (!position) return 1
-    const prefix = sidePrefix(this.side)
-    const maxSlots = document.querySelectorAll(`[id^="video-slot-${prefix}"]`).length || 3
-    const match = position.match(/(\d+)$/)
-    if (match) {
-      const num = parseInt(match[1], 10)
-      return ((num - 1) % maxSlots) + 1
-    }
-    return 1
+    const domPrefix = sidePrefix(this.side)
+    const maxSlots = document.querySelectorAll(`[id^="video-slot-${domPrefix}"]`).length || 3
+    return mapGridPositionToDomSlot(position, {
+      introLayout: this.isIntroLayout,
+      maxSlots,
+    })
   }
 
   switchSet(newSet: 'set1' | 'set2') {
@@ -160,13 +184,16 @@ export class WorkoutGridDisplay {
 
   private updatePositionLabel(slot: number, position: string) {
     const prefix = sidePrefix(this.side)
+    const displayPosition = this.isIntroLayout
+      ? internalPositionToDisplayCode(position, this.side)
+      : position
     const overlayId = `position-overlay-${prefix}${slot}`
     const overlayElement = document.getElementById(overlayId)
     if (overlayElement) {
-      overlayElement.textContent = position
+      overlayElement.textContent = displayPosition
       overlayElement.style.display = 'block'
     }
-    this.updateReadyScreenLabel(slot, position)
+    this.updateReadyScreenLabel(slot, displayPosition)
     this.updateCategoryLabel(position)
   }
 
@@ -221,13 +248,14 @@ export class WorkoutGridDisplay {
 
   private resetPositionLabel(slot: number, defaultLabel: string) {
     const prefix = sidePrefix(this.side)
+    const label = this.isIntroLayout ? getIntroSlotDefaultLabel(this.side, slot) : defaultLabel
     const overlayId = `position-overlay-${prefix}${slot}`
     const overlayElement = document.getElementById(overlayId)
     if (overlayElement) {
-      overlayElement.textContent = defaultLabel
+      overlayElement.textContent = label
       overlayElement.style.display = 'none'
     }
-    this.updateReadyScreenLabel(slot, defaultLabel)
+    this.updateReadyScreenLabel(slot, label)
   }
 
   private updateExerciseNameLabel(_slot: number, _exerciseName: string) { }
@@ -421,5 +449,55 @@ export class WorkoutGridDisplay {
 
   seekByPhase(targetLabel: string) {
     this.queueManager.seekByPhase(targetLabel)
+  }
+
+  async focusIntroPosition(
+    target: IntroFocusTarget,
+    fallbackSequence?: any,
+  ): Promise<boolean> {
+    if (!this.isIntroLayout) return false
+
+    const domPrefix = sidePrefix(this.side)
+    const maxSlots =
+      document.querySelectorAll(`[id^="video-slot-${domPrefix}"]`).length || 6
+
+    const resolved = resolveIntroFocusForMonitor(target, this.side, {
+      introLayout: true,
+      maxSlots,
+    })
+    if (!resolved) return false
+
+    const nextState = await focusIntroSlotInGrid(
+      {
+        side: this.side,
+        players: this.players,
+        loopIntervals: this.loopIntervals,
+        attachVimeoPlayerHandlers: this.attachVimeoPlayerHandlers,
+      },
+      {
+        positionCode: resolved.displayCode,
+        internalPosition: resolved.internalPosition,
+        slot: resolved.slot,
+        fallbackSequence,
+      },
+      this.introFocusState,
+    )
+
+    if (!nextState) return false
+    this.introFocusState = nextState
+    return true
+  }
+
+  cancelIntroFocus(): void {
+    cancelIntroFocusInGrid(
+      {
+        side: this.side,
+        players: this.players,
+        loopIntervals: this.loopIntervals,
+        attachVimeoPlayerHandlers: this.attachVimeoPlayerHandlers,
+      },
+      this.introFocusState,
+    )
+    this.introFocusState = null
   }
 }

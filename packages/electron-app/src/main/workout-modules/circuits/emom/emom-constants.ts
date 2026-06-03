@@ -1,5 +1,11 @@
 import type { ExerciseSequence, ActiveSet } from '../../../types'
 import { computePlanRowWithinHalf } from '../shared/half-rounds-meta'
+import {
+  DEFAULT_GRID_POSITION,
+  STRESS_LAP_ORDER,
+  normalizeGridPosition,
+  parseGridPosition,
+} from '../../../../common/grid-position-codes.js'
 
 /**
  * 로컬·CI 테스트용 (DB·세션 duration은 그대로, 재생만 단축).
@@ -36,12 +42,9 @@ export const resolveEmomStepDurationSec = (storedSeconds: number): number => {
 
 /**
  * EMOM 메인 순서 — Loop/Stress와 동일
- * 전반전: L1→L2→L3→R3→R2→R1, 후반전: L4→L5→L6→R6→R5→R4
+ * 전반전: A1→A2→A3→B3→B2→B1, 후반전: A4→A5→A6→B6→B5→B4
  */
-export const EMOM_LAP_ORDER: readonly string[] = [
-  'L1', 'L2', 'L3', 'R3', 'R2', 'R1',
-  'L4', 'L5', 'L6', 'R6', 'R5', 'R4',
-]
+export const EMOM_LAP_ORDER = STRESS_LAP_ORDER
 
 /**
  * 전·후반 그룹 — Loop와 동일: 플랜 라운드 1…N → 전반, N+1…2N → 후반.
@@ -71,7 +74,7 @@ export const sortEmomDisplaySequences = (
 ): ExerciseSequence[] => {
   const positionMap = new Map<string, ExerciseSequence>()
   for (const seq of roundExercises) {
-    const pos = seq.position || 'L1'
+    const pos = normalizeGridPosition(seq.position || DEFAULT_GRID_POSITION)
     if (!positionMap.has(pos)) positionMap.set(pos, seq)
   }
   const half = getEmomHalfGroupIndex(round, halfRounds)
@@ -83,11 +86,11 @@ export const sortEmomDisplaySequences = (
 
 /** Stress/Loop와 동일한 lap 표시 (후반전은 1~6 랩으로 정규화) */
 export const computeEmomLapIndex = (position: string | undefined): number => {
-  const idx = EMOM_LAP_ORDER.indexOf(position || '')
+  const normalized = normalizeGridPosition(position || '')
+  const idx = EMOM_LAP_ORDER.indexOf(normalized)
   const lapIndexRaw = idx >= 0 ? idx + 1 : 1
-  const posMatch = (position || '').match(/^[LR](\d+)$/)
-  const posNum = posMatch ? parseInt(posMatch[1], 10) : 1
-  const isSecondHalf = posNum >= 4
+  const parsed = parseGridPosition(normalized)
+  const isSecondHalf = parsed?.prefix === 'B'
   return isSecondHalf ? ((lapIndexRaw - 1) % 6) + 1 : lapIndexRaw <= 6 ? lapIndexRaw : 1
 }
 

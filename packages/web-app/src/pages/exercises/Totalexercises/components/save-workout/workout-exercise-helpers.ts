@@ -1,49 +1,47 @@
 import { buildAmrapExerciseGroups } from '../amrapGroupBuilders'
 import { Exercise, PanelRow } from '../types'
 import { WorkoutExerciseItem } from './save-types'
+import {
+  GRID_FIRST_HALF_PREFIX,
+  GRID_SECOND_HALF_PREFIX,
+  STRESS_LAP_ORDER,
+  parseGridPosition,
+} from '@/utils/gridPositionCodes'
 
+/** 반(prefix A/B) 기준 — 반 내부 STRESS_LAP_ORDER 스네이크 순 */
 export const sortExercisesForExecution = (exercises: Exercise[]): Exercise[] => {
-    const parsePosition = (pos?: string): { prefix: string; num: number } => {
-        if (!pos) return { prefix: '', num: 999 }
-        const match = pos.match(/^([LR])(\d+)$/)
-        if (!match) return { prefix: '', num: 999 }
-        return { prefix: match[1], num: parseInt(match[2], 10) }
-    }
+  const halfGroups: Map<string, Exercise[]> = new Map()
 
-    const getGroupIndex = (num: number): number => Math.floor((num - 1) / 3)
-    const groups: Map<number, { left: Exercise[]; right: Exercise[] }> = new Map()
+  exercises.forEach((ex) => {
+    const parsed = parseGridPosition(ex.position)
+    if (!parsed) return
+    if (!halfGroups.has(parsed.prefix)) halfGroups.set(parsed.prefix, [])
+    halfGroups.get(parsed.prefix)!.push(ex)
+  })
 
-    exercises.forEach((ex) => {
-        const { prefix, num } = parsePosition(ex.position)
-        if (prefix !== 'L' && prefix !== 'R') return
+  const sortedExercises: Exercise[] = []
+  ;[GRID_FIRST_HALF_PREFIX, GRID_SECOND_HALF_PREFIX].forEach((halfPrefix) => {
+    const group = halfGroups.get(halfPrefix)
+    if (!group?.length) return
 
-        const groupIdx = getGroupIndex(num)
-        if (!groups.has(groupIdx)) {
-            groups.set(groupIdx, { left: [], right: [] })
-        }
-        const group = groups.get(groupIdx)!
-        if (prefix === 'L') {
-            group.left.push(ex)
-            return
-        }
-        group.right.push(ex)
+    const orderSlice =
+      halfPrefix === GRID_FIRST_HALF_PREFIX
+        ? STRESS_LAP_ORDER.slice(0, 6)
+        : STRESS_LAP_ORDER.slice(6, 12)
+
+    const byPos = new Map<string, Exercise>()
+    group.forEach((ex) => {
+      const pos = parseGridPosition(ex.position)
+      if (pos) byPos.set(`${pos.prefix}${pos.num}`, ex)
     })
 
-    const sortedExercises: Exercise[] = []
-    const sortedGroupKeys = Array.from(groups.keys()).sort((a, b) => a - b)
-
-    sortedGroupKeys.forEach((groupIdx) => {
-        const group = groups.get(groupIdx)!
-        group.left.sort(
-            (a, b) => parsePosition(a.position).num - parsePosition(b.position).num,
-        )
-        group.right.sort(
-            (a, b) => parsePosition(b.position).num - parsePosition(a.position).num,
-        )
-        sortedExercises.push(...group.left, ...group.right)
+    orderSlice.forEach((pos) => {
+      const ex = byPos.get(pos)
+      if (ex) sortedExercises.push(ex)
     })
+  })
 
-    return sortedExercises
+  return sortedExercises
 }
 
 export const getAmrapTimeBreakdownFromPanels = (
@@ -104,6 +102,7 @@ export const generateWorkoutExercises = (
                     name: ex.name_ko || ex.name_en || '운동',
                     duration: row.time,
                     position: ex.position || null,
+                    reps: ex.reps ?? 0,
                 })
 
                 const isLastSet = setIndex === panelRows.length - 1

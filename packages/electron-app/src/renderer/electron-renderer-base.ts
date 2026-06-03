@@ -10,6 +10,8 @@ import { RestRenderer } from './workout-renderers/rest-renderer.js'
 import { StretchingRenderer } from './workout-renderers/stretching-renderer.js'
 import { ReadyRenderer } from './workout-renderers/ready-renderer.js'
 import { MainRenderer } from './workout-renderers/main-renderer.js'
+import { applyMonitorDisplayToDom } from './applyMonitorDisplayToDom.js'
+import type { ResolvedMonitorDisplay } from './applyMonitorDisplayToDom.js'
 
 export abstract class ElectronRendererBase {
   protected currentDisplay: DisplayType = 'workout'
@@ -37,6 +39,7 @@ export abstract class ElectronRendererBase {
   ]
 
   protected isWorkoutCompletedSequence: boolean = false // 정상적인 운동 완료 시퀀스 진행 중인지 여부
+  protected currentMonitorDisplay: ResolvedMonitorDisplay | null = null
 
   constructor() {
     void this.bootstrap()
@@ -274,6 +277,12 @@ export abstract class ElectronRendererBase {
     }
   }
 
+  protected applyMonitorDisplayFromPayload(display: ResolvedMonitorDisplay | null | undefined) {
+    if (!display) return
+    this.currentMonitorDisplay = display
+    applyMonitorDisplayToDom(this.currentDisplay, display)
+  }
+
   // Splash 화면 레이블 업데이트
   protected updateSplashLabel(label: string) {
     const labelElement = document.getElementById('splash-label')
@@ -297,17 +306,19 @@ export abstract class ElectronRendererBase {
     console.log('🔄 Splash 화면 복귀')
     const splash = document.getElementById('splash-screen')
     if (splash) {
-      // 최신 레이블 업데이트
       const cachedLabel = localStorage.getItem('displayLabel') || '링크힛 운동 시스템'
-      this.updateSplashLabel(cachedLabel)
+      if (!this.currentMonitorDisplay?.displayText?.trim()) {
+        this.updateSplashLabel(cachedLabel)
+      }
 
-      this.isWorkoutCompletedSequence = false // 플래그 초기화
-
+      this.isWorkoutCompletedSequence = false
 
       splash.style.display = 'flex'
-      // 약간의 지연 후 fade-in (display 적용 후 transition 적용 위함)
       requestAnimationFrame(() => {
         splash.classList.remove('fade-out')
+        if (this.currentMonitorDisplay) {
+          applyMonitorDisplayToDom(this.currentDisplay, this.currentMonitorDisplay)
+        }
       })
     }
   }

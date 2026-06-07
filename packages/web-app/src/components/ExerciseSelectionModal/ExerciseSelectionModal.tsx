@@ -4,7 +4,7 @@
  * - API: getExercisesList, exerciseFavoriteApi (sp_GetUserExerciseFavorites, sp_ToggleUserExerciseFavorite)
  * - Components: ExerciseFavoriteStar, VimeoFitIframe
  * - 흐름: 카테고리/검색 → 목록 표시 → 체크 선택 + 즐겨찾기 → 선택추가 → 확인
- * - 선택된 운동 목록: 순서를 위치 라벨(Main A1~A6/B1~B6, DS DS1~, CD CD1~)로 표시,
+ * - 선택된 운동 목록: 순서를 위치 라벨로 표시 (grid: A1~B6, linear: 1,2,3…),
  *   WorkoutEditor 와 동일한 행 드래그 앤 드롭으로 순서 변경(드롭 시 위치 재할당)
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
@@ -78,6 +78,8 @@ import { VimeoFitIframe } from '../VimeoFitIframe/VimeoFitIframe';
 import { ExerciseFavoriteStar } from './ExerciseFavoriteStar';
 import { useExerciseFavorites } from './useExerciseFavorites';
 import { positionFromMainIndex } from '@/utils/gridPositionCodes';
+import { positionFromSequentialIndex } from '@/pages/exercises/shared/sequencePositions';
+import type { SequenceMode } from '@/pages/exercises/shared/sequenceMode';
 
 // 공통으로 사용하는 Exercise 타입 정의
 interface Exercise {
@@ -110,6 +112,8 @@ interface ExerciseSelectionModalProps {
   onExercisesSelected: (exercises: Exercise[]) => void
   selectedExercises?: Exercise[]
   defaultCategory?: string // 기본 운동구분 파라미터 추가
+  /** main-training 위치 라벨: grid(A/B) | linear(1,2,3…) — 기본 grid */
+  sequenceMode?: SequenceMode
 }
 
 interface SelectedExerciseWithTime extends Exercise {
@@ -127,7 +131,8 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
   onClose,
   onExercisesSelected,
   selectedExercises = [],
-  defaultCategory = ''
+  defaultCategory = '',
+  sequenceMode = 'grid',
 }) => {
   const dispatch = useAppDispatch()
 
@@ -185,12 +190,21 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
     return category === 'DS' || category === 'CD'
   }
 
+  const isLinearMain = sequenceMode === 'linear'
+
   // 카테고리에 따른 위치 옵션 반환
   const getPositionOptions = (category: string): string[] => {
     if (category === 'DS') {
       return ['DS1', 'DS2', 'DS3', 'DS4', 'DS5', 'DS6']
     } else if (category === 'CD') {
       return ['CD1', 'CD2', 'CD3', 'CD4', 'CD5', 'CD6']
+    }
+    if (isLinearMain) {
+      const count = Math.max(
+        tempSelectedExercises.length + parentSelectedExercises.length + 1,
+        12,
+      )
+      return Array.from({ length: count }, (_, i) => positionFromSequentialIndex(i))
     }
     return MAIN_POSITION_OPTIONS
   }
@@ -201,6 +215,9 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
       return 'DS1'
     } else if (category === 'CD') {
       return 'CD1'
+    }
+    if (isLinearMain) {
+      return positionFromSequentialIndex(0)
     }
     return 'A1'
   }
@@ -660,13 +677,17 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
         ...parentSelectedExercises.map(ex => (ex as any).position).filter(Boolean)
       ])
 
-      const exercisesWithTime: SelectedExerciseWithTime[] = selectedExercisesToAdd.map((exercise) => {
+      const exercisesWithTime: SelectedExerciseWithTime[] = selectedExercisesToAdd.map((exercise, addIndex) => {
         let nextPosition = defaultPosition
-        for (const pos of positions) {
-          if (!usedPositions.has(pos)) {
-            nextPosition = pos
-            usedPositions.add(pos)
-            break
+        if (isLinearMain && !isStretchingCategory(selectedCategory)) {
+          nextPosition = positionFromSequentialIndex(tempSelectedExercises.length + addIndex)
+        } else {
+          for (const pos of positions) {
+            if (!usedPositions.has(pos)) {
+              nextPosition = pos
+              usedPositions.add(pos)
+              break
+            }
           }
         }
 
@@ -825,10 +846,11 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
     onClose()
   }
 
-  // 선택된 운동 목록 순서 라벨 (Main A1~A6/B1~B6, DS DS1~, CD CD1~)
+  // 선택된 운동 목록 순서 라벨 (Main grid: A1~B6, linear: 1,2,3…, DS DS1~, CD CD1~)
   const getSelectedPositionLabel = (index: number): string => {
     if (selectedCategory === 'DS') return `DS${index + 1}`
     if (selectedCategory === 'CD') return `CD${index + 1}`
+    if (isLinearMain) return positionFromSequentialIndex(index)
     return positionFromMainIndex(index)
   }
 

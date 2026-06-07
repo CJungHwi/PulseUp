@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS workout_setting (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    method_type VARCHAR(20) NOT NULL COMMENT '운동 방식 (stress, loop, AMRAP, EMOM)',
+    method_type VARCHAR(20) NOT NULL COMMENT '운동 방식 (stress, loop, AMRAP, EMOM-STRESS, EMOM-LOOP)',
     round INT NOT NULL COMMENT '라운드 번호',
     time INT NOT NULL COMMENT '운동 시간 (초, AMRAP/EMOM은 분)',
     rest INT NOT NULL COMMENT '휴식 시간 (초, AMRAP/EMOM은 분)',
@@ -43,7 +43,12 @@ INSERT INTO workout_setting (method_type, round, time, rest, water_break, reps, 
 ('AMRAP', 1, 12, 1, 0, 30, 1),
 ('AMRAP', 2, 12, 0, 0, 30, 2);
 
--- EMOM 방식 (시간 기반, 분 단위, reps: 기본 운동 횟수)
+-- EMOM-STRESS 방식 (운동별 설정 라운드 반복, 분 단위, reps: 기본 운동 횟수)
 INSERT INTO workout_setting (method_type, round, time, rest, water_break, reps, sort_order) VALUES
-('EMOM', 1, 1, 1, 0, 15, 1),
-('EMOM', 2, 1, 0, 0, 15, 2);
+('EMOM-STRESS', 1, 1, 0, 60, 15, 1),
+('EMOM-STRESS', 2, 1, 0, 0, 15, 2);
+
+-- EMOM-LOOP 방식 (기존 EMOM과 동일: 라운드별 전체 운동 순차 실행)
+INSERT INTO workout_setting (method_type, round, time, rest, water_break, reps, sort_order) VALUES
+('EMOM-LOOP', 1, 1, 0, 60, 15, 1),
+('EMOM-LOOP', 2, 1, 0, 0, 15, 2);

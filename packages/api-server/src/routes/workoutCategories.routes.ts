@@ -11,6 +11,7 @@ import { successResponse, errorResponse } from '../utils/response.util.js';
 import { callProcedure, executeQuery, executeTransaction, unwrapProcedureFirstRow, unwrapProcedureResultSetAt } from '../lib/database.js';
 import { LicenseService } from '../services/license.service.js';
 import monitorDisplayRoutes from './monitorDisplay.routes.js';
+import { resolveWorkoutScopeCode } from './workoutScope.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +28,8 @@ const workoutCategoryService = new WorkoutCategoryService();
 
 const yearMonthSchema = z.string().regex(/^\d{4}-\d{2}$/, 'yearMonth는 YYYY-MM 형식이어야 합니다').optional();
 
+const workoutScopeSchema = z.string().trim().min(1).max(20).optional();
+
 const getWorkoutHistoryMasterQuerySchema = z.object({
   yearMonth: yearMonthSchema,
   memo: z.string().optional(),
@@ -34,6 +37,8 @@ const getWorkoutHistoryMasterQuerySchema = z.object({
   workout_category: z.string().optional(),
   circuitType: z.string().optional(),
   circuit_type: z.string().optional(),
+  workoutScope: workoutScopeSchema,
+  workout_scope: workoutScopeSchema,
   admin: z.string().optional()
 });
 
@@ -41,7 +46,7 @@ const masterIdParamsSchema = z.object({
   masterId: z.string().min(1)
 });
 
-const workoutSettingMethodTypeSchema = z.enum(['stress', 'loop', 'AMRAP', 'EMOM']);
+const workoutSettingMethodTypeSchema = z.enum(['stress', 'loop', 'AMRAP', 'EMOM', 'EMOM-STRESS', 'EMOM-LOOP']);
 const workoutSettingRowSchema = z.object({
   round: z.number().int().min(1),
   time: z.number().int().min(0),
@@ -81,6 +86,12 @@ function parseLooseBoolean(value: unknown): boolean {
     return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'y';
   }
   return false;
+}
+
+function normalizeEmomCircuitType(value: unknown): 'stress' | 'loop' {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized.includes('stress')) return 'stress';
+  return 'loop';
 }
 
 /** CALL 결과에서 첫 번째 결과 집합을 배열로 반환 (mysql2) */
@@ -195,6 +206,100 @@ function calculateWorkoutTimeSummaryFromJson(
   return { dsSeconds, mainSeconds, cdSeconds, totalSeconds, restSeconds };
 }
 
+type SaveWorkoutProcedureArgs = {
+  userId: string;
+  date: string;
+  time: string;
+  memo: string;
+  workoutCategory: string;
+  methodType: string | null;
+  plansJson: string;
+  exercisesJson: string;
+  workoutExercisesJson: string;
+  effectiveMasterId: string | null;
+  dynamicMasterId: string | null;
+  staticMasterId: string | null;
+  admin: boolean;
+  dsSeconds: number;
+  mainSeconds: number;
+  cdSeconds: number;
+  totalSeconds: number;
+  restSeconds: number;
+  workoutScope: string;
+};
+
+const resolveWorkoutScope = async (body: {
+  workoutScope?: string;
+  workout_scope?: string;
+}): Promise<string> => {
+  const raw = body.workoutScope || body.workout_scope || 'TOTAL';
+  return resolveWorkoutScopeCode(raw);
+};
+
+/** sp_SaveWorkout — 19파라미터(workout_scope) → 18 → 17 → 10 순 fallback */
+const callSaveWorkoutProcedure = async (args: SaveWorkoutProcedureArgs) => {
+  const base18 = [
+    args.userId,
+    args.date,
+    args.time,
+    args.memo,
+    args.workoutCategory,
+    args.methodType,
+    args.plansJson,
+    args.exercisesJson,
+    args.workoutExercisesJson,
+    args.effectiveMasterId,
+    args.dynamicMasterId,
+    args.staticMasterId,
+    args.admin,
+    args.dsSeconds,
+    args.mainSeconds,
+    args.cdSeconds,
+    args.totalSeconds,
+    args.restSeconds
+  ];
+
+  try {
+    return await callProcedure('sp_SaveWorkout', [...base18, args.workoutScope]);
+  } catch (error: unknown) {
+    const msg = String((error as { message?: string })?.message || '');
+    if (!msg.includes('Incorrect number of arguments') && !msg.includes('ER_WRONG_PARAMCOUNT')) {
+      throw error;
+    }
+  }
+
+  try {
+    return await callProcedure('sp_SaveWorkout', base18);
+  } catch (error: unknown) {
+    const msg = String((error as { message?: string })?.message || '');
+    if (!msg.includes('Incorrect number of arguments') && !msg.includes('ER_WRONG_PARAMCOUNT')) {
+      throw error;
+    }
+  }
+
+  try {
+    return await callProcedure('sp_SaveWorkout', base18.slice(0, 17));
+  } catch (error: unknown) {
+    const msg = String((error as { message?: string })?.message || '');
+    if (!msg.includes('Incorrect number of arguments') && !msg.includes('ER_WRONG_PARAMCOUNT')) {
+      throw error;
+    }
+  }
+
+  return callProcedure('sp_SaveWorkout', [
+    args.userId,
+    args.date,
+    args.time,
+    args.memo,
+    args.workoutCategory,
+    args.plansJson,
+    args.exercisesJson,
+    args.workoutExercisesJson,
+    args.effectiveMasterId,
+    args.admin
+  ]);
+};
+
 const hyberStrengthCircuitSaveBodySchema = z.object({
   date: dateSchema,
   time: z.string().min(1),
@@ -239,7 +344,9 @@ const hyberStrengthCircuitSaveBodySchema = z.object({
   totalSeconds: z.number().optional(),
   total_seconds: z.number().optional(),
   restSeconds: z.number().optional(),
-  rest_seconds: z.number().optional()
+  rest_seconds: z.number().optional(),
+  workoutScope: workoutScopeSchema,
+  workout_scope: workoutScopeSchema
 });
 
 const workoutHistoryDeleteParamsSchema = z.object({
@@ -644,80 +751,28 @@ router.post(
         masterId: effectiveMasterId
       });
 
-      // DB에 어떤 버전의 sp_SaveWorkout가 올라가 있는지 환경별로 다를 수 있어,
-      // (18파라미터 버전 -> 17파라미터 버전 -> 13파라미터 버전 -> 10파라미터 버전) 순서로 시도한다.
-      let results: any;
-      try {
-        console.log('🔍 [HyberStrengthCircuitSave] 18파라미터 버전 시도');
-        results = await callProcedure('sp_SaveWorkout', [
-          userId,
-          body.date,
-          body.time,
-          body.memo || '',
-          body.workoutCategory,
-          body.method_type || null,
-          plansJson,
-          exercisesJson,
-          workoutExercisesJson,
-          effectiveMasterId,
-          dynamicMasterId,
-          staticMasterId,
-          admin,
-          dsSeconds,
-          mainSeconds,
-          cdSeconds,
-          totalSeconds,
-          restSeconds
-        ]);
-        console.log('✅ [HyberStrengthCircuitSave] 18파라미터 버전 성공');
-      } catch (error: any) {
-        const msg = String(error?.message || '');
-        console.log('⚠️ [HyberStrengthCircuitSave] 18파라미터 버전 실패:', msg);
-        // 파라미터 개수/시그니처 불일치 가능성만 fallback 처리
-        if (!msg.includes('Incorrect number of arguments') && !msg.includes('ER_WRONG_PARAMCOUNT')) throw error;
-
-        try {
-          console.log('🔍 [HyberStrengthCircuitSave] 17파라미터 버전 시도');
-          // 17파라미터 버전 (restSeconds 제외)
-          results = await callProcedure('sp_SaveWorkout', [
-            userId,
-            body.date,
-            body.time,
-            body.memo || '',
-            body.workoutCategory,
-            body.method_type || null,
-            plansJson,
-            exercisesJson,
-            workoutExercisesJson,
-            effectiveMasterId,
-            dynamicMasterId,
-            staticMasterId,
-            admin,
-            dsSeconds,
-            mainSeconds,
-            cdSeconds,
-            totalSeconds
-          ]);
-        } catch (fallbackError: any) {
-          const fallbackMsg = String(fallbackError?.message || '');
-          if (!fallbackMsg.includes('Incorrect number of arguments') && !fallbackMsg.includes('ER_WRONG_PARAMCOUNT')) throw fallbackError;
-
-          // 10파라미터 버전 (시간 관련 파라미터 없음 - 이 버전은 시간 저장 불가)
-          results = await callProcedure('sp_SaveWorkout', [
-            userId,
-            body.date,
-            body.time,
-            body.memo || '',
-            body.workoutCategory,
-            plansJson,
-            exercisesJson,
-            workoutExercisesJson,
-            effectiveMasterId,
-            admin
-          ]);
-          console.log('✅ [HyberStrengthCircuitSave] 10파라미터 버전 성공 (시간 저장 불가)');
-        }
-      }
+      const workoutScope = await resolveWorkoutScope(body);
+      const results = await callSaveWorkoutProcedure({
+        userId,
+        date: body.date,
+        time: body.time,
+        memo: body.memo || '',
+        workoutCategory: body.workoutCategory,
+        methodType: body.method_type || null,
+        plansJson,
+        exercisesJson,
+        workoutExercisesJson,
+        effectiveMasterId,
+        dynamicMasterId,
+        staticMasterId,
+        admin,
+        dsSeconds,
+        mainSeconds,
+        cdSeconds,
+        totalSeconds,
+        restSeconds,
+        workoutScope
+      });
 
       // 결과에서 master id 추출 (SP는 master_id 컬럼으로 반환하는 경우가 많음)
       const firstRow = unwrapProcedureFirstRow<{ id?: string; master_id?: string }>(results);
@@ -769,8 +824,8 @@ router.post(
              DATE_FORMAT(date, '%Y-%m-%d') AS date, 
              workout_categories_id AS workoutCategory,
              COALESCE(
-               NULLIF((SELECT circuit_type FROM workout_history_plan WHERE workout_history_master_id = workout_history_master.id ORDER BY round LIMIT 1), 'none'),
                method_type,
+               NULLIF((SELECT circuit_type FROM workout_history_plan WHERE workout_history_master_id = workout_history_master.id ORDER BY round LIMIT 1), 'none'),
                method_name
              ) AS circuitType
            FROM workout_history_master
@@ -838,75 +893,30 @@ router.post(
         totalSeconds: totalSecondsAMRAP, restSeconds: restSecondsAMRAP
       });
 
-      let results: any;
-      try {
-        results = await callProcedure('sp_SaveWorkout', [
-          userId,
-          body.date,
-          body.time,
-          body.memo || '',
-          body.workoutCategory,
-          body.method_type || null,
-          plansJson,
-          exercisesJson,
-          workoutExercisesJson,
-          effectiveMasterId,
-          dynamicMasterId,
-          staticMasterId,
-          admin,
-          dsSecondsAMRAP,
-          mainSecondsAMRAP,
-          cdSecondsAMRAP,
-          totalSecondsAMRAP,
-          restSecondsAMRAP
-        ]);
-      } catch (error: any) {
-        const msg = String(error?.message || '');
-        if (!msg.includes('Incorrect number of arguments') && !msg.includes('ER_WRONG_PARAMCOUNT')) throw error;
+      const workoutScopeAmrap = await resolveWorkoutScope(body);
+      const resultsAmrap = await callSaveWorkoutProcedure({
+        userId,
+        date: body.date,
+        time: body.time,
+        memo: body.memo || '',
+        workoutCategory: body.workoutCategory,
+        methodType: body.method_type || null,
+        plansJson,
+        exercisesJson,
+        workoutExercisesJson,
+        effectiveMasterId,
+        dynamicMasterId,
+        staticMasterId,
+        admin,
+        dsSeconds: dsSecondsAMRAP,
+        mainSeconds: mainSecondsAMRAP,
+        cdSeconds: cdSecondsAMRAP,
+        totalSeconds: totalSecondsAMRAP,
+        restSeconds: restSecondsAMRAP,
+        workoutScope: workoutScopeAmrap
+      });
 
-        try {
-          // 17파라미터 버전 (restSeconds 제외)
-          results = await callProcedure('sp_SaveWorkout', [
-            userId,
-            body.date,
-            body.time,
-            body.memo || '',
-            body.workoutCategory,
-            body.method_type || null,
-            plansJson,
-            exercisesJson,
-            workoutExercisesJson,
-            effectiveMasterId,
-            dynamicMasterId,
-            staticMasterId,
-            admin,
-            dsSecondsAMRAP,
-            mainSecondsAMRAP,
-            cdSecondsAMRAP,
-            totalSecondsAMRAP
-          ]);
-        } catch (fallbackError: any) {
-          const fallbackMsg = String(fallbackError?.message || '');
-          if (!fallbackMsg.includes('Incorrect number of arguments') && !fallbackMsg.includes('ER_WRONG_PARAMCOUNT')) throw fallbackError;
-
-          // 10파라미터 버전 (시간 관련 파라미터 없음 - 이 버전은 시간 저장 불가)
-          results = await callProcedure('sp_SaveWorkout', [
-            userId,
-            body.date,
-            body.time,
-            body.memo || '',
-            body.workoutCategory,
-            plansJson,
-            exercisesJson,
-            workoutExercisesJson,
-            effectiveMasterId,
-            admin
-          ]);
-          console.log('⚠️ [Time-StructuredAMRAP] 10파라미터 버전 사용 - 시간 저장 불가');
-        }
-      }
-
-      const firstRows = Array.isArray(results) && Array.isArray(results[0]) ? results[0] : Array.isArray(results) ? results : [];
+      const firstRows = Array.isArray(resultsAmrap) && Array.isArray(resultsAmrap[0]) ? resultsAmrap[0] : Array.isArray(resultsAmrap) ? resultsAmrap : [];
       const firstRow = Array.isArray(firstRows) ? firstRows[0] : null;
       const savedId = firstRow?.id || firstRow?.master_id || effectiveMasterId;
 
@@ -934,7 +944,7 @@ router.post(
       if (!userId) return res.status(401).json(errorResponse('인증 정보가 없습니다', 'UNAUTHORIZED'));
 
       const body = req.body as z.infer<typeof hyberStrengthCircuitSaveBodySchema>;
-      body.method_type = body.method_type || 'EMOM';
+      body.method_type = normalizeEmomCircuitType(body.method_type);
       body.plans = (body.plans || []).map((p: any) => {
         const raw = String(p?.circuit_type ?? '').toLowerCase();
         const circuit_type =
@@ -951,8 +961,8 @@ router.post(
              DATE_FORMAT(date, '%Y-%m-%d') AS date, 
              workout_categories_id AS workoutCategory,
              COALESCE(
-               NULLIF((SELECT circuit_type FROM workout_history_plan WHERE workout_history_master_id = workout_history_master.id ORDER BY round LIMIT 1), 'none'),
                method_type,
+               NULLIF((SELECT circuit_type FROM workout_history_plan WHERE workout_history_master_id = workout_history_master.id ORDER BY round LIMIT 1), 'none'),
                method_name
              ) AS circuitType
            FROM workout_history_master
@@ -974,7 +984,7 @@ router.post(
           const isSameCircuitType =
             incomingCircuitType == null
               ? true
-              : String(current.circuitType ?? '').toLowerCase() === String(incomingCircuitType).toLowerCase();
+              : normalizeEmomCircuitType(current.circuitType) === normalizeEmomCircuitType(incomingCircuitType);
           if (!isSameDate || !isSameCategory || !isSameCircuitType) effectiveMasterId = null;
         }
       }
@@ -1020,75 +1030,30 @@ router.post(
         totalSeconds: totalSecondsEMOM, restSeconds: restSecondsEMOM
       });
 
-      let results: any;
-      try {
-        results = await callProcedure('sp_SaveWorkout', [
-          userId,
-          body.date,
-          body.time,
-          body.memo || '',
-          body.workoutCategory,
-          body.method_type || null,
-          plansJson,
-          exercisesJson,
-          workoutExercisesJson,
-          effectiveMasterId,
-          dynamicMasterId,
-          staticMasterId,
-          admin,
-          dsSecondsEMOM,
-          mainSecondsEMOM,
-          cdSecondsEMOM,
-          totalSecondsEMOM,
-          restSecondsEMOM
-        ]);
-      } catch (error: any) {
-        const msg = String(error?.message || '');
-        if (!msg.includes('Incorrect number of arguments') && !msg.includes('ER_WRONG_PARAMCOUNT')) throw error;
+      const workoutScopeEmom = await resolveWorkoutScope(body);
+      const resultsEmom = await callSaveWorkoutProcedure({
+        userId,
+        date: body.date,
+        time: body.time,
+        memo: body.memo || '',
+        workoutCategory: body.workoutCategory,
+        methodType: body.method_type || null,
+        plansJson,
+        exercisesJson,
+        workoutExercisesJson,
+        effectiveMasterId,
+        dynamicMasterId,
+        staticMasterId,
+        admin,
+        dsSeconds: dsSecondsEMOM,
+        mainSeconds: mainSecondsEMOM,
+        cdSeconds: cdSecondsEMOM,
+        totalSeconds: totalSecondsEMOM,
+        restSeconds: restSecondsEMOM,
+        workoutScope: workoutScopeEmom
+      });
 
-        try {
-          // 17파라미터 버전 (restSeconds 제외)
-          results = await callProcedure('sp_SaveWorkout', [
-            userId,
-            body.date,
-            body.time,
-            body.memo || '',
-            body.workoutCategory,
-            body.method_type || null,
-            plansJson,
-            exercisesJson,
-            workoutExercisesJson,
-            effectiveMasterId,
-            dynamicMasterId,
-            staticMasterId,
-            admin,
-            dsSecondsEMOM,
-            mainSecondsEMOM,
-            cdSecondsEMOM,
-            totalSecondsEMOM
-          ]);
-        } catch (fallbackError: any) {
-          const fallbackMsg = String(fallbackError?.message || '');
-          if (!fallbackMsg.includes('Incorrect number of arguments') && !fallbackMsg.includes('ER_WRONG_PARAMCOUNT')) throw fallbackError;
-
-          // 10파라미터 버전 (시간 관련 파라미터 없음 - 이 버전은 시간 저장 불가)
-          results = await callProcedure('sp_SaveWorkout', [
-            userId,
-            body.date,
-            body.time,
-            body.memo || '',
-            body.workoutCategory,
-            plansJson,
-            exercisesJson,
-            workoutExercisesJson,
-            effectiveMasterId,
-            admin
-          ]);
-          console.log('⚠️ [Time-StructuredEMOM] 10파라미터 버전 사용 - 시간 저장 불가');
-        }
-      }
-
-      const firstRows = Array.isArray(results) && Array.isArray(results[0]) ? results[0] : Array.isArray(results) ? results : [];
+      const firstRows = Array.isArray(resultsEmom) && Array.isArray(resultsEmom[0]) ? resultsEmom[0] : Array.isArray(resultsEmom) ? resultsEmom : [];
       const firstRow = Array.isArray(firstRows) ? firstRows[0] : null;
       const savedId = firstRow?.id || firstRow?.master_id || effectiveMasterId;
 
@@ -1158,6 +1123,17 @@ router.get(
       const query = req.query as z.infer<typeof getWorkoutHistoryMasterQuerySchema>;
       const workoutCategory = query.workoutCategory || query.workout_category || null;
       const circuitType = query.circuitType || query.circuit_type || null;
+      const workoutScopeFilter = query.workoutScope || query.workout_scope || null;
+      const effectiveCircuitTypeSql = `
+        CASE
+          WHEN COALESCE(wc.major_category, whm.workout_categories_id) = 'EMOM' THEN
+            CASE
+              WHEN LOWER(COALESCE(whm.method_type, '')) LIKE '%stress%' THEN 'stress'
+              ELSE 'loop'
+            END
+          ELSE COALESCE(plan_summary.circuit_type, whm.method_type)
+        END
+      `;
 
       const admin = query.admin === '1' ? '1' : '0';
 
@@ -1196,8 +1172,13 @@ router.get(
       }
 
       if (circuitType) {
-        whereParts.push('COALESCE(plan_summary.circuit_type, whm.method_type) = ?');
+        whereParts.push(`${effectiveCircuitTypeSql} = ?`);
         params.push(circuitType);
+      }
+
+      if (workoutScopeFilter) {
+        whereParts.push("(whm.workout_scope = ? OR (whm.workout_scope IS NULL AND ? = 'TOTAL'))");
+        params.push(workoutScopeFilter, workoutScopeFilter);
       }
 
       const rows = await executeQuery(
@@ -1223,6 +1204,7 @@ router.get(
           q.main_seconds,
           q.cd_seconds,
           q.total_seconds,
+          q.workout_scope,
           q.created_at
         FROM (
           SELECT
@@ -1231,10 +1213,11 @@ router.get(
             whm.time,
             whm.memo,
             whm.admin AS is_admin,
+            COALESCE(whm.workout_scope, 'TOTAL') AS workout_scope,
             COALESCE(wc.id, whm.workout_categories_id) AS workout_categories_id,
             COALESCE(wc.major_category, whm.workout_categories_id) AS major_category,
             COALESCE(wc.major_category_name, whm.workout_categories_id) AS major_category_name,
-            COALESCE(plan_summary.circuit_type, whm.method_type) AS circuit_type,
+            ${effectiveCircuitTypeSql} AS circuit_type,
             COALESCE(
               whm.total_seconds,
               CASE

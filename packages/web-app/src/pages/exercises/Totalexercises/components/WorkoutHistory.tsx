@@ -1,5 +1,5 @@
 /**
- * 컴포넌트 요약 — 트레이닝 기록 조회 (Totalexercises 좌측 패널)
+ * 컴포넌트 요약 - 트레이닝 기록 조회 (Totalexercises 좌측 패널)
  *
  * 기능: 년월·운동구분·서킷·메모 필터, 사용자/관리자 탭, 기록 더블클릭 적용.
  * API: `GET /workout-categories/workout-history-master` (필터는 부모 Totalexercises에서 호출)
@@ -38,6 +38,14 @@ import {
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/hooks/redux'
 import { WorkoutMaster } from './types'
+
+const getCircuitTypeLabel = (circuitType?: string): string => {
+    const normalized = String(circuitType || '').trim().toLowerCase()
+    if (!normalized || normalized === 'none') return '-'
+    if (normalized.includes('stress')) return '스트레스'
+    if (normalized.includes('loop') || normalized === 'emom') return '루프'
+    return '-'
+}
 
 interface WorkoutHistoryProps {
     selectedDate: Dayjs | null
@@ -152,7 +160,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
                                     {m.workoutCategoriesName || '-'}
                                 </ShadcnTableCell>
                                 <ShadcnTableCell className="p-1 text-center border-r border-[#343637] dark:border-[#6b7280] text-xs group-hover:text-inherit transition-colors">
-                                    {!m.circuitType || m.circuitType === 'none' ? '-' : m.circuitType === 'stress' ? '스트레스' : '루프'}
+                                    {getCircuitTypeLabel(m.circuitType)}
                                 </ShadcnTableCell>
                                 <ShadcnTableCell className="p-1 text-center border-r border-[#343637] dark:border-[#6b7280] text-xs group-hover:text-inherit transition-colors">
                                     {m.workoutTime}
@@ -176,7 +184,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
             <CardHeader className="h-12 px-4 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0 border-[#343637] dark:border-[#6b7280]">
                 <CardTitle className="text-lg font-bold flex items-center gap-2 leading-none">
                     <ClipboardList className="h-5 w-5 text-primary" />
-                    트레이닝 기록 조회
+                    메인 트레이닝 기록 조회
                 </CardTitle>
             </CardHeader>
 
@@ -246,7 +254,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
                     </div>
                 </div>
 
-                {/* 사용자 / 관리자 탭 — MonthProgram과 동일하게 항상 노출 */}
+                {/* 사용자 / 관리자 탭 - MonthProgram과 동일하게 항상 노출 */}
                 <div className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col">
                     <ShadcnTabs
                         value={recordTabValue.toString()}

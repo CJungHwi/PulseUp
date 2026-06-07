@@ -5,7 +5,7 @@
  *
  * 라우트(요약):
  * - 인증 레이아웃: `/login`, `/register`, `/forgot-password`(플레이스홀더), `/` → `/home` 리다이렉트
- * - 보호 + `MainLayout`: `/home`, `/dashboard`, `/MonthProgram`, `/DynamicStretching`, `/CoolDown`, `/Totalexercises`, `/settings`, `/workout-settings`, `/booking/calendar`, `/booking/manage`, `/account/bookings`, `/account/workout-records`, `/announcements`, `/mui-license`, `/admin/*`
+ * - 보호 + `MainLayout`: `/home`, `/dashboard`, `/MonthProgram`, `/DynamicStretching`, `/CoolDown`, `/Totalexercises`, `/Singleexercises`, `/settings`, `/workout-settings`, `/booking/calendar`, `/booking/manage`, `/account/bookings`, `/account/workout-records`, `/announcements`, `/mui-license`, `/admin/*` (`/admin/workout-scope` 포함)
  * - 독립(레이아웃 없음): `/remote-control`
  * - 인라인 플레이스홀더: `/videos`, `/playlists`, `/workouts`, `/profile`
  * - `*` 404
@@ -44,6 +44,8 @@ import DynamicStretching from './pages/exercises/DynamicStretching/DynamicStretc
 import CoolDown from './pages/exercises/CoolDown/CoolDown'
 // import PowerCircuit from './pages/exercises/PowerCircuit/PowerCircuit'
 import Totalexercises from './pages/exercises/Totalexercises/Totalexercises'
+import Singleexercises from './pages/exercises/Singleexercises/Singleexercises'
+import WorkoutScopeManager from './pages/Admin/WorkoutScopeManager/WorkoutScopeManager'
 // import FunctionalCircuit from './pages/exercises/FunctionalCircuit/FunctionalCircuit'
 // import CoreCarryFocus from './pages/exercises/CoreCarryFocus/CoreCarryFocus'
 // import CircuitTraining from './pages/exercises/CircuitTraining/CircuitTraining'
@@ -156,6 +158,7 @@ const AppContent: React.FC = () => {
                 <Route path="CoolDown" element={<CoolDown />} />
                 {/* <Route path="PowerCircuit" element={<PowerCircuit />} /> */}
                 <Route path="Totalexercises" element={<Totalexercises />} />
+                <Route path="Singleexercises" element={<Singleexercises />} />
                 {/* <Route path="FunctionalCircuit" element={<FunctionalCircuit />} /> */}
                 {/* <Route path="CoreCarryFocus" element={<CoreCarryFocus />} /> */}
                 {/* <Route path="CircuitTraining" element={<CircuitTraining />} /> */}
@@ -276,6 +279,11 @@ const AppContent: React.FC = () => {
                 <Route path="admin/licenses" element={
                   <ProtectedRoute requiredRole="super_admin">
                     <LicenseManagement />
+                  </ProtectedRoute>
+                } />
+                <Route path="admin/workout-scope" element={
+                  <ProtectedRoute requiredRole="super_admin">
+                    <WorkoutScopeManager />
                   </ProtectedRoute>
                 } />
               </Route>

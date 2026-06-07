@@ -23,6 +23,7 @@ import branchRoutes from './routes/branches.routes.js'
 import announcementRoutes from './routes/announcements.routes.js'
 import { menusRoutes } from './routes/menus.routes.js'
 import workoutCategoryRoutes from './routes/workoutCategories.routes.js'
+import workoutScopeRoutes from './routes/workoutScope.routes.js'
 import docsRoutes from './routes/docs.routes.js'
 import adminRoutes from './routes/admin.routes.js'
 import electronRoutes from './routes/electron.routes.js'
@@ -123,6 +124,7 @@ app.use('/api/branches', branchRoutes)
 app.use('/api/announcements', announcementRoutes)
 app.use('/api/menus', menusRoutes)
 app.use('/api/workout-categories', workoutCategoryRoutes)
+app.use('/api/workout-scopes', workoutScopeRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/electron', electronRoutes)
 app.use('/api/devices', deviceRoutes)

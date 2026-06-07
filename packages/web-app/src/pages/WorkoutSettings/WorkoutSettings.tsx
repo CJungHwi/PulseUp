@@ -1,7 +1,7 @@
 /**
- * 페이지 요약 — 운동·모니터 설정 (`/workout-settings`)
+ * 페이지 요약 - 운동/모니터 설정 (`/workout-settings`)
  *
- * 기능: stress/loop/AMRAP/EMOM별 시간표 설정, 모니터 표시(기본/인트로 이미지 좌·중·우, 영상앱 문자).
+ * 기능: MAIN-STRESS/MAIN-LOOP/AMRAP/EMOM-STRESS/EMOM-LOOP별 시간표 설정, 모니터 표시(기본/인트로 이미지 좌·중·우, 영상앱 문자).
  *
  * 호출/연동:
  * - `GET|PUT /workout-categories/workout-setting/:methodType`
@@ -24,10 +24,14 @@ import { useMonitorDisplaySettings } from './components/useMonitorDisplaySetting
 import {
   DEFAULT_ROWS,
   METHOD_LABELS,
+  isEmomMethod,
+  isTimeStructuredMethod,
   type MethodType,
   normalizeRows,
   type WorkoutSettingRow
 } from './components/workoutSettingsModel'
+
+const WORKOUT_SETTING_METHODS: MethodType[] = ['stress', 'loop', 'AMRAP', 'EMOM-STRESS', 'EMOM-LOOP']
 
 const WorkoutSettings: React.FC = () => {
   const { showSnackbar } = useSnackbar()
@@ -39,14 +43,15 @@ const WorkoutSettings: React.FC = () => {
     stress: DEFAULT_ROWS.stress,
     loop: DEFAULT_ROWS.loop,
     AMRAP: DEFAULT_ROWS.AMRAP,
-    EMOM: DEFAULT_ROWS.EMOM
+    'EMOM-STRESS': DEFAULT_ROWS['EMOM-STRESS'],
+    'EMOM-LOOP': DEFAULT_ROWS['EMOM-LOOP']
   })
   const [isSavingSetting, setIsSavingSetting] = useState(false)
 
   const monitorDisplay = useMonitorDisplaySettings(isSuperAdmin)
 
   const isTimeStructured = useMemo(
-    () => selectedMethod === 'AMRAP' || selectedMethod === 'EMOM',
+    () => isTimeStructuredMethod(selectedMethod),
     [selectedMethod]
   )
 
@@ -61,14 +66,14 @@ const WorkoutSettings: React.FC = () => {
   }
 
   useEffect(() => {
-    ;(['stress', 'loop', 'AMRAP', 'EMOM'] as MethodType[]).forEach((methodType) => {
+    WORKOUT_SETTING_METHODS.forEach((methodType) => {
       loadMethodSettings(methodType)
     })
   }, [])
 
   const currentRows = settingsByMethod[selectedMethod]
   const isWaterBreakLastRowOnly =
-    selectedMethod === 'stress' || selectedMethod === 'loop' || selectedMethod === 'EMOM'
+    selectedMethod === 'stress' || selectedMethod === 'loop' || isEmomMethod(selectedMethod)
 
   const handleCellDirectChange = (index: number, field: keyof WorkoutSettingRow, value: number) => {
     if (field === 'waterBreak' && isWaterBreakLastRowOnly && index !== currentRows.length - 1) return
@@ -112,7 +117,7 @@ const WorkoutSettings: React.FC = () => {
           isActive: true
         }
       ]
-      if (selectedMethod === 'stress' || selectedMethod === 'loop' || selectedMethod === 'EMOM') {
+      if (selectedMethod === 'stress' || selectedMethod === 'loop' || isEmomMethod(selectedMethod)) {
         nextRows = nextRows.map((row, i) =>
           i < nextRows.length - 1 ? { ...row, waterBreak: 0 } : row
         )
@@ -130,7 +135,7 @@ const WorkoutSettings: React.FC = () => {
         round: index + 1,
         sortOrder: index + 1
       }))
-      if (selectedMethod === 'stress' || selectedMethod === 'loop' || selectedMethod === 'EMOM') {
+      if (selectedMethod === 'stress' || selectedMethod === 'loop' || isEmomMethod(selectedMethod)) {
         nextRows = nextRows.map((row, i) =>
           i < nextRows.length - 1 ? { ...row, waterBreak: 0 } : row
         )
@@ -142,13 +147,13 @@ const WorkoutSettings: React.FC = () => {
   const handleSaveCurrentMethod = async () => {
     try {
       setIsSavingSetting(true)
-      const isAmrapEmom = selectedMethod === 'AMRAP' || selectedMethod === 'EMOM'
+      const isAmrapEmom = isTimeStructuredMethod(selectedMethod)
       const payloadRows = currentRows.map((row, index) => {
         let rest = row.rest
         let waterBreak = row.waterBreak
         if (isAmrapEmom) {
           rest = 0
-          if (selectedMethod === 'EMOM' && index < currentRows.length - 1) {
+          if (isEmomMethod(selectedMethod) && index < currentRows.length - 1) {
             waterBreak = 0
           } else {
             waterBreak = row.waterBreak * 60

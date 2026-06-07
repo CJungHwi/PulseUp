@@ -24,6 +24,8 @@ export interface WorkoutMaster {
   totalSeconds?: number
   restSeconds?: number
   is_admin?: boolean
+  /** workout_history_master.workout_scope (TOTAL | SINGLE 등) */
+  workoutScope?: string
 }
 
 export interface WorkoutDetail {

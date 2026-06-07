@@ -1951,7 +1951,14 @@ BEGIN
             COALESCE(wc.id, whm.workout_categories_id) AS workout_categories_id,
             COALESCE(wc.major_category, whm.workout_categories_id) AS major_category,
             COALESCE(wc.major_category_name, whm.workout_categories_id) AS major_category_name,
-            COALESCE(plan_summary.circuit_type, whm.method_type) AS circuit_type,
+            CASE
+                WHEN COALESCE(wc.major_category, whm.workout_categories_id) = 'EMOM' THEN
+                    CASE
+                        WHEN LOWER(COALESCE(whm.method_type, '')) LIKE '%stress%' THEN 'stress'
+                        ELSE 'loop'
+                    END
+                ELSE COALESCE(plan_summary.circuit_type, whm.method_type)
+            END AS circuit_type,
             COALESCE(
                 whm.total_seconds,
                 CASE
@@ -1993,7 +2000,14 @@ BEGIN
                OR wc.major_category = p_workout_category
                OR wc.minor_category = p_workout_category)
           AND (p_circuit_type IS NULL OR p_circuit_type = ''
-               OR COALESCE(plan_summary.circuit_type, whm.method_type) = p_circuit_type)
+               OR CASE
+                    WHEN COALESCE(wc.major_category, whm.workout_categories_id) = 'EMOM' THEN
+                        CASE
+                            WHEN LOWER(COALESCE(whm.method_type, '')) LIKE '%stress%' THEN 'stress'
+                            ELSE 'loop'
+                        END
+                    ELSE COALESCE(plan_summary.circuit_type, whm.method_type)
+                  END = p_circuit_type)
     ) q
     ORDER BY q.date DESC, q.time DESC;
 END //

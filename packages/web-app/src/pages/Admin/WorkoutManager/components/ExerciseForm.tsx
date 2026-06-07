@@ -143,7 +143,7 @@ export const ExerciseForm: React.FC<ExerciseFormProps> = ({
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="name_en" className={labelClassName}>운동명 (영문) - Vimeo 매칭용</Label>
+                                <Label htmlFor="name_en" className={labelClassName}>운동명 (영문)</Label>
                                 <Input
                                     id="name_en"
                                     value={formData.name_en}

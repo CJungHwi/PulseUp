@@ -1,5 +1,5 @@
 /**
- * MonthProgramFilterBar — 운동구분 / 서킷구분 / 년월 필터 바
+ * MonthProgramFilterBar — 운동 scope / 운동구분 / 서킷구분 / 년월 필터 바
  */
 
 import React from 'react'
@@ -13,9 +13,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import type { WorkoutScopeRecord } from '@/pages/exercises/shared/workoutScope'
 import type { WorkoutCategoryItem } from './monthProgramTypes'
 
 interface MonthProgramFilterBarProps {
+  workoutScopeFilter: string
+  onWorkoutScopeFilterChange: (v: string) => void
+  workoutScopes: WorkoutScopeRecord[]
   exerciseType: string
   onExerciseTypeChange: (v: string) => void
   circuitType: string
@@ -26,6 +30,9 @@ interface MonthProgramFilterBarProps {
 }
 
 export const MonthProgramFilterBar: React.FC<MonthProgramFilterBarProps> = ({
+  workoutScopeFilter,
+  onWorkoutScopeFilterChange,
+  workoutScopes,
   exerciseType,
   onExerciseTypeChange,
   circuitType,
@@ -33,9 +40,42 @@ export const MonthProgramFilterBar: React.FC<MonthProgramFilterBarProps> = ({
   selectedDate,
   onSelectedDateChange,
   workoutCategories,
-}) => (
+}) => {
+  const scopeLabels: Record<string, string> = {
+    전체: '전체',
+    ...Object.fromEntries(workoutScopes.map((s) => [s.scopeCode, s.scopeName])),
+  }
+
+  return (
   <div className="p-4 border-b border-[#343637] dark:border-[#6b7280] bg-muted/30">
     <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-col gap-1 flex-1 min-w-[100px]">
+        <Label className="text-[11px] text-muted-foreground leading-none">운동 Scope</Label>
+        <ShadcnSelect
+          value={workoutScopeFilter}
+          onValueChange={onWorkoutScopeFilterChange}
+          labels={scopeLabels}
+        >
+          <SelectTrigger className="w-full h-9 text-xs border-[#343637] dark:border-[#6b7280] bg-card">
+            <SelectValue placeholder="운동 Scope" />
+          </SelectTrigger>
+          <SelectContent className="min-w-[180px]">
+            <SelectItem value="전체" className="whitespace-nowrap">
+              전체
+            </SelectItem>
+            {workoutScopes.map((scope) => (
+              <SelectItem
+                key={scope.id}
+                value={scope.scopeCode}
+                className="whitespace-nowrap"
+              >
+                {scope.scopeName} ({scope.scopeCode})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </ShadcnSelect>
+      </div>
+
       <div className="flex flex-col gap-1 flex-1 min-w-[100px]">
         <Label className="text-[11px] text-muted-foreground leading-none">운동구분</Label>
         <ShadcnSelect
@@ -105,4 +145,5 @@ export const MonthProgramFilterBar: React.FC<MonthProgramFilterBarProps> = ({
       </div>
     </div>
   </div>
-)
+  )
+}

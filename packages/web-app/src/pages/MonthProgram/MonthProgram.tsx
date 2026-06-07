@@ -4,11 +4,12 @@
  * 기능: 월·일별 운동 마스터/상세 편집, 복사·삭제, Electron 디바이스 선택·재생·리모컨 팝업.
  *
  * 호출/연동:
- * - `monthProgramApi`: workout-history-master/detail/exercises, copy-workout, control-token 등
+ * - `fetchWorkoutScopes()` → DB workout_scope 목록 (필터용, 저장 페이지 scope만)
+ * - `monthProgramApi`: workout-history-master (workoutScope 필터), detail/exercises, copy-workout 등
  * - `electronHttp`: startWorkoutPlay/Relay, checkDeviceConnected, 디바이스 로컬 스토리지
  *
  * 관련 컴포넌트(`./components/`):
- * - `MonthProgramFilterBar`: 운동구분/서킷구분/년월 필터
+ * - `MonthProgramFilterBar`: 운동 scope/운동구분/서킷구분/년월 필터
  * - `MonthProgramMasterTabs`: 사용자/관리자 마스터 테이블 탭
  * - `WorkoutPlanTable`, `WorkoutSummaryTable`: 좌(라운드/세트)·우(요약) 테이블
  * - `WorkoutMemoBar`: 메모 입력
@@ -16,11 +17,12 @@
  * - `ElectronIPDialog`, `CopyConfirmToast`
  * - `useMainSplitter`, `useDetailColumnResize`: 분할/컬럼 리사이즈 훅
  * - `useWorkoutPlay`: Play / 디바이스 선택 / Electron IP 다이얼로그 훅
+ * - `MonthProgramPlayButtons`: scope별 Play(가로/세로) 버튼
  * - `monthProgramApi`, `monthProgramTypes`, `monthProgramUtils`
  *
  * 외부 컴포넌트: `DeviceSelectDialog`, `ExerciseSelectionModal`
  *
- * 흐름: 이력 로드 → 편집·저장 → Play 시 토큰·릴레이·디바이스로 재생 제어.
+ * 흐름: scope별 저장 이력 조회 → 선택 → scope에 따라 Play( TOTAL=단일 / SINGLE=가로·세로 ) 실행.
  */
 
 import React, { useCallback, useEffect, useState } from 'react'
@@ -28,7 +30,7 @@ import dayjs, { Dayjs } from 'dayjs'
 import 'dayjs/locale/ko'
 import updateLocale from 'dayjs/plugin/updateLocale'
 import { useSearchParams } from 'react-router-dom'
-import { Calendar, Dumbbell, Play, Save } from 'lucide-react'
+import { Calendar, Dumbbell, Save } from 'lucide-react'
 
 import { useAppSelector } from '@/hooks/redux'
 import { useSnackbar } from '@/contexts/SnackbarContext'
@@ -71,6 +73,9 @@ import { WorkoutMemoBar } from './components/WorkoutMemoBar'
 import { WorkoutDetailTable } from './components/WorkoutDetailTable'
 import { ElectronIPDialog } from './components/ElectronIPDialog'
 import { CopyConfirmToast } from './components/CopyConfirmToast'
+import { MonthProgramPlayButtons } from './components/MonthProgramPlayButtons'
+import { fetchWorkoutScopes } from '../exercises/shared/workoutScopeApi'
+import type { WorkoutScopeRecord } from '../exercises/shared/workoutScope'
 
 dayjs.extend(updateLocale)
 
@@ -97,6 +102,8 @@ const MonthProgram: React.FC = () => {
   } = useDetailColumnResize(DETAIL_COL_WIDTHS)
 
   const [selectedDate, setSelectedDate] = useState<Dayjs | null>(dayjs())
+  const [workoutScopeFilter, setWorkoutScopeFilter] = useState<string>('전체')
+  const [workoutScopes, setWorkoutScopes] = useState<WorkoutScopeRecord[]>([])
   const [exerciseType, setExerciseType] = useState<string>('전체')
   const [circuitType, setCircuitType] = useState<string>('전체')
   const [workoutCategories, setWorkoutCategories] = useState<WorkoutCategoryItem[]>([])
@@ -140,6 +147,11 @@ const MonthProgram: React.FC = () => {
     setWorkoutCategories(cats)
   }
 
+  const loadWorkoutScopes = async () => {
+    const scopes = await fetchWorkoutScopes()
+    setWorkoutScopes(scopes)
+  }
+
   const loadMasters = async (admin: '0' | '1') => {
     if (!selectedDate) return
     const masters = await fetchWorkoutMasters({
@@ -147,6 +159,7 @@ const MonthProgram: React.FC = () => {
       workoutCategory: exerciseType === '전체' ? '' : exerciseType,
       circuitType: circuitType === '전체' ? '' : circuitType,
       admin,
+      ...(workoutScopeFilter !== '전체' ? { workoutScope: workoutScopeFilter } : {}),
     })
     if (admin === '0') setWorkoutMasters(masters)
     else setAdminWorkoutMasters(masters)
@@ -190,6 +203,7 @@ const MonthProgram: React.FC = () => {
 
   useEffect(() => {
     loadCategories()
+    loadWorkoutScopes()
     if (selectedDate) loadMasters(initialTabValue === 1 ? '1' : '0')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -201,7 +215,7 @@ const MonthProgram: React.FC = () => {
     setSelectedMaster(null)
     setWorkoutDetails([])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, exerciseType, circuitType, recordTabValue])
+  }, [selectedDate, exerciseType, circuitType, recordTabValue, workoutScopeFilter])
 
   const handleExerciseSelected = async (selectedExercises: any[]) => {
     if (!selectedSequenceForEdit || selectedExercises.length === 0) {
@@ -336,6 +350,9 @@ const MonthProgram: React.FC = () => {
 
           <ShadcnCardContent className="p-0">
             <MonthProgramFilterBar
+              workoutScopeFilter={workoutScopeFilter}
+              onWorkoutScopeFilterChange={setWorkoutScopeFilter}
+              workoutScopes={workoutScopes}
               exerciseType={exerciseType}
               onExerciseTypeChange={setExerciseType}
               circuitType={circuitType}
@@ -404,15 +421,11 @@ const MonthProgram: React.FC = () => {
                 )}
               </div>
 
-              <Button
-                size="sm"
-                className="h-8 bg-green-600 hover:bg-green-700 text-white"
-                onClick={play.handlePlayWorkout}
-                disabled={!selectedMaster || exerciseSequences.length === 0}
-              >
-                <Play className="mr-1 h-4 w-4" />
-                Play
-              </Button>
+              <MonthProgramPlayButtons
+                selectedMaster={selectedMaster}
+                exerciseCount={exerciseSequences.length}
+                onPlay={play.handlePlayWorkout}
+              />
             </div>
           </ShadcnCardHeader>
 

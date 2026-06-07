@@ -1,7 +1,7 @@
 /**
- * WorkoutEditor — 일자별 트레이닝 등록/편집 패널
+ * WorkoutEditor - 일자별 트레이닝 등록/편집 패널
  * - 운동 목록: 행 전체 드래그 → 행 사이 드롭 슬롯에 놓으면 순서 변경 (onReorderExercise)
- * - Main 탭: AMRAP/EMOM 및 stress/loop 서킷에서 운동별 횟수(reps) 편집
+ * - Main 탭: AMRAP 및 MAIN/EMOM stress/loop 서킷에서 운동별 횟수(reps) 편집
  * - 이미지 설정 탭: 일자별 운동 기록 모니터 표시 (WorkoutMonitorDisplayPanel)
  */
 import React from 'react'
@@ -137,7 +137,7 @@ interface WorkoutEditorProps {
     isAdmin: boolean
     setIsAdmin: (val: boolean) => void
     currentEditingMasterId: string | null
-    /** 불러온 기록의 서킷 타입 — stress↔loop 전환 시 저장된 totalSeconds 대신 라이브 합계 사용 */
+    /** 불러온 기록의 서킷 타입 - stress/loop 전환 시 저장된 totalSeconds 대신 라이브 합계 사용 */
     originalCircuitType: string | null
 
     /** 일자별 운동 기록 모니터 표시 설정 */
@@ -146,6 +146,9 @@ interface WorkoutEditorProps {
 
     /** WorkoutSettings 에 등록된 기본 횟수 (stress/loop/AMRAP/EMOM) */
     defaultRepsFromSettings?: number
+
+    /** MAIN 저장 시 6/12개 제한 적용 여부 (Totalexercises=true, Singleexercises=false) */
+    enforceMainExerciseCount?: boolean
 }
 
 export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
@@ -204,6 +207,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
     workoutMonitorDisplay,
     onWorkoutMonitorDisplayChange,
     defaultRepsFromSettings = 10,
+    enforceMainExerciseCount = true,
 }) => {
     const { isSuperAdmin } = useAuth()
     const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false)
@@ -337,7 +341,8 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
         majorCategory === 'MAIN' &&
         (circuitType === 'stress' || circuitType === 'loop')
     const isAMRAPorEMOM = majorUpper === 'AMRAP' || majorUpper === 'EMOM' || rightUpper === 'AMRAP' || rightUpper === 'EMOM'
-    /** MAIN stress/loop — AMRAP/EMOM 과 동일하게 운동별 횟수 컬럼 표시 */
+    const isCircuitTypeSelectable = rightExerciseType === 'MAIN' || majorUpper === 'EMOM' || rightUpper === 'EMOM'
+    /** MAIN stress/loop - AMRAP/EMOM 과 동일하게 운동별 횟수 컬럼 표시 */
     const isMainStressOrLoopReps =
         majorUpper === 'MAIN' &&
         rightUpper !== 'AMRAP' &&
@@ -346,6 +351,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
     const showMainRepsColumn = isAMRAPorEMOM || isMainStressOrLoopReps
     const isAMRAPOnly = majorUpper === 'AMRAP' || rightUpper === 'AMRAP'
     const isMainSaveBlocked =
+        enforceMainExerciseCount &&
         majorUpper === 'MAIN' &&
         exercises.length !== 6 &&
         exercises.length !== 12
@@ -728,7 +734,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
             <CardHeader className="h-12 px-4 py-0 border-b bg-[#f9fafb] dark:bg-muted/30 flex flex-row items-center justify-between space-y-0 border-[#343637] dark:border-[#6b7280]">
                 <CardTitle className="text-lg font-bold flex items-center gap-2 leading-none text-[#1d1d1d] dark:text-white">
                     <CalendarPlus className="h-5 w-5 text-primary" />
-                    일자별 트레이닝 등록
+                    일자별 메인 트레이닝 등록
                 </CardTitle>
             </CardHeader>
             {/* Toolbar (상단 고정) */}
@@ -852,15 +858,15 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                     {/* Round/Panel Card */}
                     <Card className="flex flex-[3.3] min-h-0 flex-col overflow-hidden border border-[#343637] dark:border-[#6b7280] shadow-md">
                         <CardHeader className="h-10 shrink-0 px-3 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0 border-[#343637] dark:border-[#6b7280]">
-                            {rightExerciseType === 'MAIN' ? (
+                            {isCircuitTypeSelectable ? (
                                 <RadioGroup value={circuitType} onValueChange={onCircuitTypeChange} className="flex flex-row gap-2">
                                     <div className="flex items-center space-x-1">
-                                        <RadioGroupItem value="stress" id="stress" className="h-3 w-3" />
-                                        <Label htmlFor="stress" className="text-[10px]">스트레스</Label>
+                                        <RadioGroupItem value="stress" id={`${majorUpper || rightUpper}-stress`} className="h-3 w-3" />
+                                        <Label htmlFor={`${majorUpper || rightUpper}-stress`} className="text-[10px]">스트레스</Label>
                                     </div>
                                     <div className="flex items-center space-x-1">
-                                        <RadioGroupItem value="loop" id="loop" className="h-3 w-3" />
-                                        <Label htmlFor="loop" className="text-[10px]">루프</Label>
+                                        <RadioGroupItem value="loop" id={`${majorUpper || rightUpper}-loop`} className="h-3 w-3" />
+                                        <Label htmlFor={`${majorUpper || rightUpper}-loop`} className="text-[10px]">루프</Label>
                                     </div>
                                 </RadioGroup>
                             ) : (
@@ -942,7 +948,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                                                 <ShadcnTableCell className="p-0 h-[35px] border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors">
                                                     {(majorCategory === 'AMRAP' || majorCategory === 'EMOM') ? (
                                                         majorCategory === 'EMOM' && !isLastPanelRow ? (
-                                                            <span className="text-xs text-muted-foreground tabular-nums flex items-center justify-center" aria-label="물보충 — EMOM에서는 마지막 행만 설정">—</span>
+                                                            <span className="text-xs text-muted-foreground tabular-nums flex items-center justify-center" aria-label="물보충 - EMOM에서는 마지막 행만 설정">-</span>
                                                         ) : (
                                                         <div className="flex items-center justify-center gap-1">
                                                             <button onClick={(e) => { e.stopPropagation(); onPanelTimeChange(row.id, 'waterBreak', false); }} className="text-primary" aria-label="물보충 감소">-</button>
@@ -1011,9 +1017,9 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                                                         ) : (
                                                             <span
                                                                 className="text-xs text-muted-foreground tabular-nums"
-                                                                aria-label="물보충 — 스트레스·루프에서는 마지막 행만 설정"
+                                                                aria-label="물보충 - 스트레스/루프에서는 마지막 행만 설정"
                                                             >
-                                                                —
+                                                                -
                                                             </span>
                                                         )}
                                                     </ShadcnTableCell>

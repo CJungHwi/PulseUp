@@ -4,11 +4,12 @@
  * 반환:
  * - 디바이스/IP 다이얼로그 상태
  * - `handlePlayWorkout`: Play 버튼 클릭 시 라우팅 (서버 중계/직접 연결 분기)
+ *   - SINGLE scope: `horizontal`(3분할) / `vertical`(5분할) layout 인자 지원
  * - `handleDeviceSelect`: 디바이스 선택 후 릴레이 재생
  * - `handleElectronIPConfirm`: IP 다이얼로그 확인
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   checkDeviceConnected,
   getSelectedDeviceId,
@@ -17,12 +18,22 @@ import {
   startWorkoutPlay,
   startWorkoutPlayRelay,
 } from '@/services/electronHttp'
+import * as deviceService from '@/services/deviceService'
+import type { ScreenMode } from '@/services/deviceService'
 import { getRemoteControlPopupWindowFeatures } from '@/pages/RemoteControl/components/remoteControlUtils'
 import { mergeSequencesWithPlans } from './monthProgramUtils'
 import { requestControlToken } from './monthProgramApi'
 import type { ExerciseSequence, WorkoutMaster, WorkoutPlan } from './monthProgramTypes'
 
 type Severity = 'success' | 'info' | 'warning' | 'error'
+
+/** SINGLE scope 재생 시 화면 구성 — 가로=3분할, 세로=5분할 */
+export type SinglePlayLayout = 'horizontal' | 'vertical'
+
+const LAYOUT_TO_SCREEN_MODE: Record<SinglePlayLayout, ScreenMode> = {
+  horizontal: 3,
+  vertical: 5,
+}
 
 interface UseWorkoutPlayArgs {
   selectedMaster: WorkoutMaster | null
@@ -110,6 +121,26 @@ export const useWorkoutPlay = ({
     getSelectedDeviceId(),
   )
   const [selectedDeviceLabel, setSelectedDeviceLabel] = useState<string>('')
+  const pendingScreenModeRef = useRef<ScreenMode | null>(null)
+
+  const applyScreenModeBeforePlay = async (
+    deviceId: string,
+    screenMode: ScreenMode,
+  ): Promise<boolean> => {
+    const result = await deviceService.setScreenMode(deviceId, screenMode)
+    if (result.success) {
+      if (result.fallbackToThree && screenMode === 5) {
+        notify('모니터 수가 부족해 3분할로 재생됩니다.', 'info')
+      }
+      return true
+    }
+    if (result.error === 'WORKOUT_ACTIVE') {
+      notify('운동 진행 중에는 화면 구성을 변경할 수 없습니다. 종료 후 다시 시도해주세요.', 'warning')
+      return false
+    }
+    notify(result.error || '화면 구성 변경에 실패했습니다.', 'error')
+    return false
+  }
 
   const openElectronIPDialog = async (onConfirm: () => void, suggestedIP?: string) => {
     const savedIP = localStorage.getItem('electronIP') || 'localhost'
@@ -169,8 +200,12 @@ export const useWorkoutPlay = ({
     }
   }
 
-  const executePlayWorkoutRelay = async (deviceId: string) => {
+  const executePlayWorkoutRelay = async (deviceId: string, screenMode?: ScreenMode | null) => {
     if (!selectedMaster || !user) return
+    if (screenMode) {
+      const ok = await applyScreenModeBeforePlay(deviceId, screenMode)
+      if (!ok) return
+    }
     const currentCircuitType = computeCircuitType(selectedMaster)
     const mergedSequences = mergeSequencesWithPlans(
       exerciseSequences,
@@ -267,7 +302,7 @@ export const useWorkoutPlay = ({
     }
   }
 
-  const handlePlayWorkout = async () => {
+  const handlePlayWorkout = async (layout?: SinglePlayLayout) => {
     if (!selectedMaster || exerciseSequences.length === 0) {
       notify('운동 기록을 선택해주세요.', 'warning')
       return
@@ -277,11 +312,13 @@ export const useWorkoutPlay = ({
       return
     }
 
+    const screenMode = layout ? LAYOUT_TO_SCREEN_MODE[layout] : null
+
     if (isServerRelayMode()) {
       if (selectedDeviceIdLocal) {
         const isConnected = await checkDeviceConnected(selectedDeviceIdLocal)
         if (isConnected) {
-          executePlayWorkoutRelay(selectedDeviceIdLocal)
+          executePlayWorkoutRelay(selectedDeviceIdLocal, screenMode)
           return
         }
         setSelectedDeviceId(null)
@@ -291,11 +328,17 @@ export const useWorkoutPlay = ({
           '선택된 LINKHIIT 앱 연결이 끊어졌습니다. 디바이스를 다시 등록하거나 선택해주세요.',
           'warning',
         )
+        pendingScreenModeRef.current = screenMode
         setDeviceSelectDialogOpen(true)
       } else {
+        pendingScreenModeRef.current = screenMode
         setDeviceSelectDialogOpen(true)
       }
       return
+    }
+
+    if (screenMode) {
+      notify('직접 연결 모드에서는 화면 구성 변경 없이 재생합니다.', 'info')
     }
 
     const electronIP = localStorage.getItem('electronIP') || 'localhost'
@@ -313,7 +356,9 @@ export const useWorkoutPlay = ({
     setSelectedDeviceIdLocal(deviceId)
     setSelectedDeviceLabel(displayLabel)
     setSelectedDeviceId(deviceId)
-    executePlayWorkoutRelay(deviceId)
+    const screenMode = pendingScreenModeRef.current
+    pendingScreenModeRef.current = null
+    executePlayWorkoutRelay(deviceId, screenMode)
   }
 
   return {

@@ -1,10 +1,12 @@
 /**
- * 페이지 요약 — 통합 메인 운동 (`/Totalexercises`)
+ * 페이지 요약 - 통합 메인 운동 (`/Totalexercises`)
  *
- * 기능: 이력(일반/관리자)·서킷·AMRAP·EMOM 편집, Vimeo 미리보기, 저장·삭제.
+ * 기능: 이력(일반/관리자), 서킷, AMRAP, EMOM(stress/loop) 편집, Vimeo 미리보기, 저장/삭제.
  *
  * 호출/연동:
- * - `GET /workout-categories/workout-history-master` (yearMonth, workoutCategory, circuitType, memo, admin)
+ * - `GET /workout-categories/workout-setting/:methodType` (EMOM-STRESS/EMOM-LOOP 등, WorkoutSettings와 동일)
+ * - `useWorkoutScope(WORKOUT_SCOPE_TOTAL)` → DB scope 사용 여부 확인
+ * - `GET /workout-categories/workout-history-master` (yearMonth, workoutCategory, circuitType, memo, admin, workoutScope)
  * - `GET|PUT /workout-categories/workout/:masterId/monitor-display-profile`
  * - 저장: `saveCircuit` → `POST .../HyberStrengthCircuitSave`; `saveAMRAP` → `POST .../Time-StructuredAMRAP`; `saveEMOM` → `POST .../Time-StructuredEMOM`
  * - `DELETE /workout-categories/workout-history/:id`
@@ -44,15 +46,26 @@ import {
   getMainPositionSortValue,
   positionFromMainIndex,
 } from '@/utils/gridPositionCodes'
+import { WORKOUT_SCOPE_TOTAL } from '../shared/workoutScope'
+import { useWorkoutScope } from '../shared/useWorkoutScope'
+import {
+  fetchWorkoutSettingPanelRows,
+  getDefaultPanelRowsForMethod,
+  mapWorkoutSettingToPanelRows,
+  normalizeCircuitTypeForCategory,
+  resolvePanelRowType,
+  resolveWorkoutSettingKey,
+} from './components/workoutSettingBridge'
+import type { WorkoutSettingApiRow } from '@/pages/WorkoutSettings/components/workoutSettingsModel'
 
-/** WorkoutSettings(`/workout-settings`)에 등록된 방법별 기본 횟수 — MAIN은 circuitType(stress|loop) 키 사용 */
+/** WorkoutSettings(`/workout-settings`)에 등록된 방법별 기본 횟수 - MAIN/EMOM은 circuitType(stress|loop) 키 사용 */
 const resolveDefaultRepsFromSettings = (
   majorCategory: string,
   circuitType: string,
   workoutSettings: Record<string, { reps?: number }[]>,
   fallback = 10,
 ): number => {
-  const settingKey = majorCategory === 'MAIN' ? circuitType : majorCategory
+  const settingKey = resolveWorkoutSettingKey(majorCategory, circuitType)
   const settings = workoutSettings[settingKey]
   if (Array.isArray(settings) && settings.length > 0) {
     const reps = Number(settings[0].reps ?? 0)
@@ -90,7 +103,9 @@ export default function Totalexercises() {
   const { showSnackbar } = useSnackbar()
   const { user } = useAppSelector((state) => state.auth)
   const isSystemAdmin = user?.role === 'super_admin'
-  
+  const { scopeCode: workoutScopeCode, isActive: isScopeActive, loading: scopeLoading } =
+    useWorkoutScope(WORKOUT_SCOPE_TOTAL)
+
   const toast = useMemo(() => {
     return {
       success: (msg: string) => showSnackbar({ message: msg, severity: 'success' }),
@@ -98,6 +113,11 @@ export default function Totalexercises() {
       warning: (msg: string) => showSnackbar({ message: msg, severity: 'warning' })
     }
   }, [showSnackbar])
+
+  useEffect(() => {
+    if (scopeLoading || isScopeActive) return
+    toast.warning(`${workoutScopeCode} scope가 비활성화되어 있습니다. 저장이 제한될 수 있습니다.`)
+  }, [scopeLoading, isScopeActive, workoutScopeCode, toast])
 
   // --- Left Panel State (History) ---
   const [selectedDate, setSelectedDate] = useState<Dayjs | null>(dayjs())
@@ -343,9 +363,10 @@ export default function Totalexercises() {
       memo: memoFilter || '',
       workoutCategory: historyExerciseType === '전체' ? '' : historyExerciseType,
       circuitType: historyCircuitType === '전체' ? '' : historyCircuitType,
+      workoutScope: workoutScopeCode,
       admin,
     }),
-    [memoFilter, historyExerciseType, historyCircuitType],
+    [memoFilter, historyExerciseType, historyCircuitType, workoutScopeCode],
   )
 
   const handleSearch = useCallback(async (overrideSelectedDate?: Dayjs | null) => {
@@ -409,133 +430,86 @@ export default function Totalexercises() {
       c.id?.toString() === type
     )
     const major = cat?.major_category || type
-    const settingKey = major === 'MAIN' ? circuitType : major
-
-    try {
-      const response = await api.get(`/workout-categories/workout-setting/${settingKey}`)
-      if (response.data.success) {
-        const freshSettings = response.data.data || []
-        if (freshSettings.length > 0) {
-          setWorkoutSettings(prev => ({ ...prev, [settingKey]: freshSettings }))
-          const rows: PanelRow[] = freshSettings.map((s: any, idx: number) => {
-            const isAe = settingKey === 'AMRAP' || settingKey === 'EMOM'
-            const wb = Number(s.water_break ?? 0)
-            const r = Number(s.rest ?? 0)
-            return {
-              id: `${Date.now()}_${idx + 1}`,
-              round: s.round,
-              time: s.time,
-              rest: isAe ? 0 : s.rest,
-              waterBreak: isAe ? (wb > 0 ? Math.floor(wb / 60) : r) : (s.water_break ?? 0),
-              type: settingKey
-            }
-          })
-          // 기록을 불러온 상태에서도 운동선택 변경 시 DB(관리) 운동설정으로 패널 갱신
-          setPanelRows(rows)
-          return
-        }
+    const nextCircuitType = normalizeCircuitTypeForCategory(major, circuitType)
+    setCircuitType(nextCircuitType)
+    if (major === 'MAIN' || major === 'EMOM' || major === 'AMRAP') {
+      try {
+        const rows = await fetchWorkoutSettingPanelRows(major, nextCircuitType)
+        setPanelRows(rows)
+        return
+      } catch (error) {
+        console.error('Fetch workout setting for exercise type:', error)
+        toast.error('운동설정 값을 불러오지 못했습니다.')
       }
-    } catch (error) {
-      console.error('Fetch workout setting for exercise type:', error)
     }
-    // API 실패·빈 응답 시에도 운동선택 변경 의도에 맞게 캐시/기본값 적용 (편집 중 가드 우회)
-    applyDefaults(major, circuitType, true)
+    applyDefaults(major, nextCircuitType, true)
   }
 
   const handleCircuitTypeChange = async (type: string) => {
-    setCircuitType(type)
-    if (majorCategory === 'MAIN') {
-      try {
-        const response = await api.get(`/workout-categories/workout-setting/${type}`)
-        if (response.data.success) {
-          const freshSettings = response.data.data || []
-          if (freshSettings.length > 0) {
-            setWorkoutSettings(prev => ({ ...prev, [type]: freshSettings }))
-            const rows: PanelRow[] = freshSettings.map((s: any, idx: number) => ({
-              id: `${Date.now()}_${idx + 1}`,
-              round: s.round,
-              time: s.time,
-              rest: s.rest,
-              waterBreak: s.water_break ?? 0,
-              type
-            }))
-            // stress/loop DB 프리셋이 서로 다름 → 패널을 통째로 바꾸면 같은 화면에서도 요약 시간이 달라짐.
-            // 이미 패널이 있으면 time/rest/waterBreak는 유지하고 type(및 round 정렬)만 맞춘다.
-            setPanelRows(prev => {
-              if (prev.length === 0) return rows
-              return prev.map((r, i) => ({
-                ...r,
-                type,
-                round: rows[i]?.round ?? r.round,
-              }))
-            })
-            return
-          }
-        }
-      } catch (error) {
-        console.error('Fetch workout setting for circuit type:', error)
+    const nextCircuitType = normalizeCircuitTypeForCategory(majorCategory, type)
+    setCircuitType(nextCircuitType)
+    if (majorCategory !== 'MAIN' && majorCategory !== 'EMOM') return
+
+    try {
+      const rows = await fetchWorkoutSettingPanelRows(majorCategory, nextCircuitType)
+      if (majorCategory === 'EMOM') {
+        setPanelRows(rows)
+        return
       }
-      applyDefaults('MAIN', type, true)
+      setPanelRows(prev => {
+        if (prev.length === 0) return rows
+        return prev.map((r, i) => ({
+          ...r,
+          type: nextCircuitType,
+          round: rows[i]?.round ?? r.round,
+        }))
+      })
+    } catch (error) {
+      console.error('Fetch workout setting for circuit type:', error)
+      toast.error('운동설정 값을 불러오지 못했습니다.')
+      applyDefaults(majorCategory, nextCircuitType, true)
     }
   }
 
   const applyDefaults = (major: string, methodType: string, forceApply: boolean = false) => {
-    // If we are editing an existing record and it already has data, don't overwrite (unless forced)
     if (!forceApply && currentEditingMasterId && panelRows.length > 0) {
       return
     }
 
-    // DB에서 가져온 설정값 사용
-    const settingKey = major === 'MAIN' ? methodType : major
-    const settings = workoutSettings[settingKey]
+    const panelType = resolvePanelRowType(major, methodType)
+    const circuitForKey = normalizeCircuitTypeForCategory(major, methodType)
+    const settingKey = resolveWorkoutSettingKey(major, circuitForKey)
+    const cached = workoutSettings[settingKey]
 
-    if (settings && settings.length > 0) {
-      // DB 설정값으로 panelRows 생성
-      const rows: PanelRow[] = settings.map((s: any, idx: number) => {
-        const isAe = methodType === 'AMRAP' || methodType === 'EMOM'
-        const wb = Number(s.water_break ?? 0)
-        const r = Number(s.rest ?? 0)
-        return {
-          id: `${Date.now()}_${idx + 1}`,
-          round: s.round,
-          time: s.time,
-          rest: isAe ? 0 : s.rest,
-          waterBreak: isAe ? (wb > 0 ? Math.floor(wb / 60) : r) : (s.water_break ?? 0),
-          type: methodType
-        }
-      })
-      setPanelRows(rows)
-    } else {
-      // DB 설정값이 없으면 기본값 사용 (fallback)
-      if (major === 'MAIN') {
-        if (methodType === 'stress') {
-          setPanelRows([
-            { id: `${Date.now()}_1`, round: 1, time: 60, rest: 20, waterBreak: 0, type: 'stress' },
-            { id: `${Date.now()}_2`, round: 2, time: 40, rest: 20, waterBreak: 0, type: 'stress' },
-            { id: `${Date.now()}_3`, round: 3, time: 20, rest: 20, waterBreak: 60, type: 'stress' }
-          ])
-        } else if (methodType === 'loop') {
-          setPanelRows([
-            { id: `${Date.now()}_1`, round: 1, time: 60, rest: 20, waterBreak: 60, type: 'loop' },
-            { id: `${Date.now()}_2`, round: 2, time: 60, rest: 20, waterBreak: 60, type: 'loop' },
-            { id: `${Date.now()}_3`, round: 3, time: 60, rest: 20, waterBreak: 0, type: 'loop' }
-          ])
-        }
-      } else if (major === 'AMRAP') {
-        setPanelRows([
-          { id: `${Date.now()}_1`, round: 1, time: 12, rest: 0, waterBreak: 1, type: 'AMRAP' },
-          { id: `${Date.now()}_2`, round: 2, time: 12, rest: 0, waterBreak: 0, type: 'AMRAP' }
-        ])
-      } else if (major === 'EMOM') {
-        setPanelRows([
-          { id: `${Date.now()}_1`, round: 1, time: 1, rest: 0, waterBreak: 1, type: 'EMOM' },
-          { id: `${Date.now()}_2`, round: 2, time: 1, rest: 0, waterBreak: 0, type: 'EMOM' }
-        ])
-      } else {
-        setPanelRows([])
-      }
+    if (Array.isArray(cached) && cached.length > 0) {
+      setPanelRows(
+        mapWorkoutSettingToPanelRows(
+          cached as WorkoutSettingApiRow[],
+          settingKey,
+          panelType,
+        ),
+      )
+      return
     }
+
+    setPanelRows(getDefaultPanelRowsForMethod(major, methodType))
   }
+
+  /** 신규 작성 시 EMOM/MAIN/AMRAP 선택·stress-loop 전환 후 WorkoutSettings 값 동기화 */
+  useEffect(() => {
+    if (currentEditingMasterId) return
+    if (rightExerciseType === '운동선택') return
+    const major = majorCategory
+    if (major !== 'MAIN' && major !== 'EMOM' && major !== 'AMRAP') return
+
+    let cancelled = false
+    void fetchWorkoutSettingPanelRows(major, circuitType).then((rows) => {
+      if (!cancelled) setPanelRows(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [majorCategory, circuitType, rightExerciseType, currentEditingMasterId])
 
   // --- Handlers ---
   const handleApply = async (master: WorkoutMaster) => {
@@ -577,8 +551,12 @@ export default function Totalexercises() {
       ) : null
 
       const categoryValue = foundCat ? foundCat.major_category : (m.workout_categories_id ? String(m.workout_categories_id) : '운동선택')
+      const loadedCircuitType = normalizeCircuitTypeForCategory(
+        categoryValue,
+        m.method_type || m.circuit_type || 'stress',
+      )
       setRightExerciseType(categoryValue)
-      setCircuitType(m.method_type || 'stress')
+      setCircuitType(loadedCircuitType)
 
       const isAdminRecord = !!(m.is_admin ?? master.is_admin)
       if (isAdminRecord && !isSystemAdmin) {
@@ -592,7 +570,7 @@ export default function Totalexercises() {
         setCurrentEditingMasterId(m.id)
         setOriginalDate(dayjs(m.date).format('YYYY-MM-DD'))
         setOriginalCategory(categoryValue)
-        setOriginalCircuitType(m.method_type || m.circuit_type || null)
+        setOriginalCircuitType(loadedCircuitType)
         setIsAdmin(isSystemAdmin ? isAdminRecord : false)
       }
 
@@ -600,10 +578,9 @@ export default function Totalexercises() {
       const loadedDS: Exercise[] = []
       const loadedCD: Exercise[] = []
 
-      const loadedMethodType = m.method_type || m.circuit_type || 'stress'
       const defaultRepsForLoad = resolveDefaultRepsFromSettings(
         categoryValue,
-        loadedMethodType,
+        loadedCircuitType,
         workoutSettings,
       )
 
@@ -671,7 +648,8 @@ export default function Totalexercises() {
             rest: isTimeStructured ? 0 : p.rest,
             waterBreak: isTimeStructured
               ? (hyd > 0 ? Math.floor(hyd / 60) : Math.floor(restSec / 60))
-              : (p.hydration || 0)
+              : (p.hydration || 0),
+            type: loadedCircuitType
           }
         }))
       }
@@ -744,15 +722,16 @@ export default function Totalexercises() {
         (originalDate !== rightSelectedDate?.format('YYYY-MM-DD') ||
           originalCategory !== rightExerciseType ||
           // stress/loop 변경도 신규 insert로 처리
-          (majorCategory === 'MAIN' &&
+          ((majorCategory === 'MAIN' || majorCategory === 'EMOM') &&
             (originalCircuitType || '').toLowerCase() !== (circuitType || '').toLowerCase()))
           ? null
           : currentEditingMasterId,
       isAdmin: isSystemAdmin && isAdmin,
       dsCategoryId: dsCategory?.id,
       cdCategoryId: cdCategory?.id,
-      majorCategory, // 운동시간 요약 계산을 위해 전달
-      circuitType, // 운동시간 요약 계산을 위해 전달 (MAIN일 때만 사용)
+      majorCategory,
+      circuitType,
+      workoutScope: workoutScopeCode,
       onSuccess: async (savedId: string) => {
         const targetMasterId = savedId || currentEditingMasterId
         if (!targetMasterId) {
@@ -944,7 +923,7 @@ export default function Totalexercises() {
       time: isAePanel ? 1 : 60,
       rest: isAePanel ? 0 : 20,
       waterBreak: 0,
-      type: isAePanel ? majorCategory : 'stress'
+      type: majorCategory === 'EMOM' ? circuitType : isAePanel ? majorCategory : 'stress'
     }
     setPanelRows([...panelRows, newRow])
   }
@@ -1011,7 +990,7 @@ export default function Totalexercises() {
     }))
   }
 
-  /** MAIN stress/loop 및 EMOM: 물보충은 마지막 행만 유지(불러오기·이전 입력 정리) */
+  /** MAIN stress/loop 및 EMOM: 물보충은 마지막 행만 유지(불러오기/이전 입력 정리) */
   useEffect(() => {
     if (!isWaterBreakLastRowOnly) return
     setPanelRows(prev => {
@@ -1027,7 +1006,7 @@ export default function Totalexercises() {
       })
       return changed ? next : prev
     })
-  }, [isWaterBreakLastRowOnly, panelRows])
+  }, [isWaterBreakLastRowOnly])
 
   const handlePanelExerciseSelect = (rowId: string) => {
     setSelectedPanelRowForExercise(rowId)

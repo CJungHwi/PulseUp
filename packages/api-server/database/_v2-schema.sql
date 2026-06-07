@@ -348,6 +348,20 @@ CREATE TABLE workout_categories (
     INDEX idx_sort_order (sort_order)
 ) ENGINE=InnoDB COMMENT='운동구분 - 메뉴 내용과 동일';
 
+-- 5-1. 운동 저장 scope 분류 마스터
+CREATE TABLE workout_scope (
+    id CHAR(36) PRIMARY KEY DEFAULT (UUID()) COMMENT '고유 ID',
+    scope_code VARCHAR(20) NOT NULL COMMENT '저장/조회 코드 (workout_history_master.workout_scope)',
+    scope_name VARCHAR(100) NOT NULL COMMENT '표시명',
+    sort_order INT NOT NULL DEFAULT 0 COMMENT '정렬 순서',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT '사용 여부',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',
+    UNIQUE KEY uk_scope_code (scope_code),
+    INDEX idx_is_active (is_active),
+    INDEX idx_sort_order (sort_order)
+) ENGINE=InnoDB COMMENT='운동 저장 scope 분류 마스터';
+
 -- 13. 운동 기록 Detail 테이블
 CREATE TABLE `workout_history_detail` (
   `workout_history_master_id` char(36) NOT NULL COMMENT '운동기록 마스터 ID (workout_history_master.id 참조)',
@@ -375,6 +389,7 @@ CREATE TABLE `workout_history_master` (
   `date` date NOT NULL COMMENT '운동 수행 날짜',
   `time` varchar(2) NOT NULL DEFAULT '00' COMMENT '운동실시 시간',
   `workout_categories_id` varchar(255) NOT NULL COMMENT '운동 카테고리 목록',
+  `workout_scope` varchar(20) NOT NULL DEFAULT 'TOTAL' COMMENT '운동 저장 페이지 구분 — workout_scope.scope_code 참조 (TOTAL/SINGLE 등)',
   `revision_number` int(11) DEFAULT 1 COMMENT '기록 수정 버전 번호',
   `method_type` varchar(255) NOT NULL COMMENT '운동방법 타입 - 스트레스 서킷, 루프 서킷 등등',
   `method_name` varchar(255) NOT NULL COMMENT '운동방법명 - 스트레스 서킷, 루프 서킷 등등',

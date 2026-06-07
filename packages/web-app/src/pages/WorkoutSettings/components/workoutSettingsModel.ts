@@ -1,4 +1,4 @@
-export type MethodType = 'stress' | 'loop' | 'AMRAP' | 'EMOM'
+export type MethodType = 'stress' | 'loop' | 'AMRAP' | 'EMOM-STRESS' | 'EMOM-LOOP'
 
 export interface WorkoutSettingRow {
   round: number
@@ -27,7 +27,8 @@ export const METHOD_LABELS: Record<MethodType, string> = {
   stress: 'MAIN - STRESS',
   loop: 'MAIN - LOOP',
   AMRAP: 'AMRAP',
-  EMOM: 'EMOM'
+  'EMOM-STRESS': 'EMOM - STRESS',
+  'EMOM-LOOP': 'EMOM - LOOP'
 }
 
 export const DEFAULT_ROWS: Record<MethodType, WorkoutSettingRow[]> = {
@@ -45,11 +46,21 @@ export const DEFAULT_ROWS: Record<MethodType, WorkoutSettingRow[]> = {
     { round: 1, time: 12, rest: 0, waterBreak: 1, reps: 30, sortOrder: 1, isActive: true },
     { round: 2, time: 12, rest: 0, waterBreak: 0, reps: 30, sortOrder: 2, isActive: true }
   ],
-  EMOM: [
+  'EMOM-STRESS': [
+    { round: 1, time: 1, rest: 0, waterBreak: 1, reps: 15, sortOrder: 1, isActive: true },
+    { round: 2, time: 1, rest: 0, waterBreak: 0, reps: 15, sortOrder: 2, isActive: true }
+  ],
+  'EMOM-LOOP': [
     { round: 1, time: 1, rest: 0, waterBreak: 1, reps: 15, sortOrder: 1, isActive: true },
     { round: 2, time: 1, rest: 0, waterBreak: 0, reps: 15, sortOrder: 2, isActive: true }
   ]
 }
+
+export const isTimeStructuredMethod = (methodType: MethodType): boolean =>
+  methodType === 'AMRAP' || methodType === 'EMOM-STRESS' || methodType === 'EMOM-LOOP'
+
+export const isEmomMethod = (methodType: MethodType): boolean =>
+  methodType === 'EMOM-STRESS' || methodType === 'EMOM-LOOP'
 
 export const normalizeRows = (
   rows: WorkoutSettingApiRow[],
@@ -75,7 +86,7 @@ export const normalizeRows = (
     )
   }
 
-  if (methodType === 'AMRAP' || methodType === 'EMOM') {
+  if (isTimeStructuredMethod(methodType)) {
     return mapped.map((row) => {
       const wbSec = row.waterBreak
       const restMin = row.rest

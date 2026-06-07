@@ -21,7 +21,8 @@ CREATE OR REPLACE PROCEDURE sp_SaveWorkout(
     IN p_main_seconds INT, -- Main 운동 시간 (초)
     IN p_cd_seconds INT, -- Cool Down 시간 (초)
     IN p_total_seconds INT, -- 총 운동 시간 (초)
-    IN p_rest_seconds INT -- 휴식 시간 (초)
+    IN p_rest_seconds INT, -- 휴식 시간 (초)
+    IN p_workout_scope VARCHAR(20) -- TOTAL | SINGLE (페이지 구분)
 )
 BEGIN
     DECLARE v_master_id CHAR(36);
@@ -91,6 +92,7 @@ BEGIN
             cd_seconds = IFNULL(p_cd_seconds, 0),
             total_seconds = IFNULL(p_total_seconds, 0),
             rest_seconds = IFNULL(p_rest_seconds, 0),
+            workout_scope = COALESCE(NULLIF(p_workout_scope, ''), 'TOTAL'),
             updated_at = NOW()
         WHERE id = v_master_id;
     ELSE
@@ -119,6 +121,7 @@ BEGIN
             cd_seconds,
             total_seconds,
             rest_seconds,
+            workout_scope,
             created_at,
             updated_at
         ) VALUES (
@@ -139,6 +142,7 @@ BEGIN
             IFNULL(p_cd_seconds, 0),
             IFNULL(p_total_seconds, 0),
             IFNULL(p_rest_seconds, 0),
+            COALESCE(NULLIF(p_workout_scope, ''), 'TOTAL'),
             NOW(),
             NOW()
         );

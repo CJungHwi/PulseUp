@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS workout_setting_profile (
     id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
     owner_user_id CHAR(36) NOT NULL COMMENT '데이터 소유자(users.id)',
-    method_type VARCHAR(20) NOT NULL COMMENT '운동 방식(stress, loop, AMRAP, EMOM)',
+    method_type VARCHAR(20) NOT NULL COMMENT '운동 방식(stress, loop, AMRAP, EMOM-STRESS, EMOM-LOOP)',
     round_no INT NOT NULL COMMENT '라운드 번호',
     time_value INT NOT NULL COMMENT '운동 시간(stress/loop=초, AMRAP/EMOM=분)',
     rest_value INT NOT NULL COMMENT '휴식 시간(stress/loop=초, AMRAP/EMOM=분)',

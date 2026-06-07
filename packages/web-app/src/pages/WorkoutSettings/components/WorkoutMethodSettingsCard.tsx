@@ -81,10 +81,16 @@ export const WorkoutMethodSettingsCard: React.FC<WorkoutMethodSettingsCardProps>
               AMRAP
             </TabsTrigger>
             <TabsTrigger
-              value="EMOM"
+              value="EMOM-STRESS"
               className="rounded-md px-4 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:text-blue-600 dark:data-[state=active]:text-blue-400 data-[state=active]:shadow-sm h-7 text-xs font-bold transition-all"
             >
-              EMOM
+              EMOM-STRESS
+            </TabsTrigger>
+            <TabsTrigger
+              value="EMOM-LOOP"
+              className="rounded-md px-4 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:text-blue-600 dark:data-[state=active]:text-blue-400 data-[state=active]:shadow-sm h-7 text-xs font-bold transition-all"
+            >
+              EMOM-LOOP
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -224,7 +230,7 @@ export const WorkoutMethodSettingsCard: React.FC<WorkoutMethodSettingsCardProps>
                           </button>
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground tabular-nums flex items-center justify-center">—</span>
+                        <span className="text-xs text-muted-foreground tabular-nums flex items-center justify-center">-</span>
                       )
                     ) : (
                       <div className="flex items-center justify-center gap-1">

@@ -3,7 +3,7 @@
  *
  * 모든 API 호출을 순수 함수로 캡슐화하여 페이지 컴포넌트에서 setState 처리만 하도록 분리.
  *
- * - `fetchWorkoutMasters({yearMonth, workoutCategory, circuitType, admin})`
+ * - `fetchWorkoutMasters({yearMonth, workoutCategory, circuitType, admin, workoutScope?})`
  * - `fetchWorkoutDetail(masterId)`: { details, plans }
  * - `fetchWorkoutPlansFromExercises(masterId)`: workout_exercises에서 round별 plan 추출
  * - `fetchWorkoutExercises(masterId)`: 정렬된 ExerciseSequence
@@ -40,6 +40,7 @@ const normalizeMaster = (item: any, index: number, defaultIsAdmin = false): Work
   totalSeconds: item.total_seconds ?? item.totalSeconds ?? undefined,
   restSeconds: item.rest_seconds ?? item.restSeconds ?? undefined,
   is_admin: item.is_admin ?? item.admin ?? defaultIsAdmin,
+  workoutScope: item.workoutScope || item.workout_scope || 'TOTAL',
 })
 
 const sortByDateThenCreated = (a: WorkoutMaster, b: WorkoutMaster): number => {
@@ -53,13 +54,18 @@ export interface FetchMastersParams {
   workoutCategory: string
   circuitType: string
   admin: '0' | '1'
+  workoutScope?: string
 }
 
 export const fetchWorkoutMasters = async (
   params: FetchMastersParams,
 ): Promise<WorkoutMaster[]> => {
   const response = await api.get('/workout-categories/workout-history-master', {
-    params: { ...params, memo: '' },
+    params: {
+      ...params,
+      memo: '',
+      ...(params.workoutScope ? { workoutScope: params.workoutScope } : {}),
+    },
   })
   if (!response.data.success) return []
   const masterData = response.data.data || []

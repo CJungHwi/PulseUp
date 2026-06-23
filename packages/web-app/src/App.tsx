@@ -5,7 +5,7 @@
  *
  * 라우트(요약):
  * - 인증 레이아웃: `/login`, `/register`, `/forgot-password`(플레이스홀더), `/` → `/home` 리다이렉트
- * - 보호 + `MainLayout`: `/home`, `/dashboard`, `/MonthProgram`, `/DynamicStretching`, `/CoolDown`, `/Totalexercises`, `/Singleexercises`, `/settings`, `/workout-settings`, `/booking/calendar`, `/booking/manage`, `/account/bookings`, `/account/workout-records`, `/announcements`, `/mui-license`, `/admin/*` (`/admin/workout-scope` 포함)
+ * - 보호 + `MainLayout`: `/home`, `/dashboard`, `/MonthProgram`, `/DynamicStretching`, `/CoolDown`, `/Totalexercises`, `/Singleexercises`, `/settings`, `/workout-settings`, `/booking/calendar`, `/booking/manage`, `/account/bookings`, `/account/workout-records`, `/account/workout-records/:workoutId/heart-rate`, `/announcements`, `/mui-license`, `/admin/*` (`/admin/workout-scope` 포함)
  * - 독립(레이아웃 없음): `/remote-control`
  * - 인라인 플레이스홀더: `/videos`, `/playlists`, `/workouts`, `/profile`
  * - `*` 404
@@ -29,7 +29,7 @@ import { MenuAudienceGuard } from './components/Auth/MenuAudienceGuard'
 import { RoleBasedRedirect } from './components/Auth/RoleBasedRedirect'
 import AuthProvider from './components/Auth/AuthProvider'
 import { ThemeProvider as CustomThemeProvider, useTheme } from './contexts/ThemeContext'
-import { useInactivityTimeout } from './hooks/useInactivityTimeout'
+// import { useInactivityTimeout } from './hooks/useInactivityTimeout' // 운동 중 비활성 강제 로그아웃 방지를 위해 비활성화
 import { SnackbarProvider } from './contexts/SnackbarContext'
 
 // Auth Pages
@@ -67,6 +67,7 @@ import ClassBookingCalendar from './pages/Booking/ClassBookingCalendar'
 import ClassBookingManagement from './pages/Booking/ClassBookingManagement'
 import MyBookings from './pages/Booking/MyBookings'
 import MemberWorkoutRecords from './pages/WorkoutRecords/MemberWorkoutRecords'
+import MemberWorkoutHeartRateDetail from './pages/WorkoutRecords/MemberWorkoutHeartRateDetail'
 
 // Other Pages
 import { MuiLicense } from './pages/MuiLicense/MuiLicense'
@@ -117,7 +118,8 @@ const ThemeWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 // 테마를 적용하는 내부 컴포넌트
 const AppContent: React.FC = () => {
   // 90분 비활성 타임아웃 적용
-  useInactivityTimeout()
+  // 운동 재생 중(리모컨 팝업/Electron 조작) 메인 웹페이지 무조작 시 강제 로그아웃되는 문제로 비활성화
+  // useInactivityTimeout()
 
   return (
     <CustomThemeProvider>
@@ -202,6 +204,10 @@ const AppContent: React.FC = () => {
                 <Route path="account" element={<AccountSettings />} />
                 <Route path="account/bookings" element={<MyBookings />} />
                 <Route path="account/workout-records" element={<MemberWorkoutRecords />} />
+                <Route
+                  path="account/workout-records/:workoutId/heart-rate"
+                  element={<MemberWorkoutHeartRateDetail />}
+                />
                 <Route path="booking/calendar" element={<ClassBookingCalendar />} />
                 <Route path="booking/manage" element={
                   <ProtectedRoute requiredRole="branch_admin">

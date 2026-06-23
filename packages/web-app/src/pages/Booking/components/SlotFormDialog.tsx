@@ -2,15 +2,16 @@
  * 소스 요약 — 수업 슬롯 등록/수정 다이얼로그
  *
  * 기능: 지점관리자가 수업명, 운동 대분류, 시작/종료 시간, 정원을 입력해 슬롯을 저장한다.
+ *       같은 날 여러 수업은 시간만 다르게 등록하며, 같은 시간대 중복 저장은 차단한다.
  *
  * 호출/연동: `ClassBookingManagement`, `bookingApi.createSlot/updateSlot`.
  *
  * 관련 컴포넌트: shadcn `Dialog`, `Input`, `Select`, `Button`.
  *
- * 흐름: 선택 날짜/슬롯 → 폼 초기화 → 입력 검증 → 저장 이벤트 전달.
+ * 흐름: 선택 날짜/슬롯 → 기존 수업 기준 다음 시간대 제안 → 입력 검증 → 저장 또는 저장 후 계속.
  */
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -32,8 +33,18 @@ import type { ClassSlotPayload, ClassSlot } from '../../../services/bookingApi'
 import type { WorkoutCategory } from '../../../types/workoutCategory'
 import {
   createDefaultSlotTimes,
+  createNextSlotTimes,
+  findOverlappingSlot,
+  formatTimeRange,
+  toDateKey,
   toDateTimeLocalValue,
 } from './bookingCalendarUtils'
+
+export interface SlotFormCarryOver {
+  workoutCategoryId: string
+  title: string
+  capacity: number
+}
 
 interface SlotFormDialogProps {
   open: boolean
@@ -41,12 +52,20 @@ interface SlotFormDialogProps {
   categories: WorkoutCategory[]
   selectedDate?: Date | null
   slot?: ClassSlot | null
+  existingDaySlots?: ClassSlot[]
+  branchSlots?: ClassSlot[]
+  carryOver?: SlotFormCarryOver | null
   saving?: boolean
   onClose: () => void
-  onSubmit: (payload: ClassSlotPayload) => Promise<void>
+  onSubmit: (payload: ClassSlotPayload, options?: { continueOnSameDay?: boolean }) => Promise<void>
 }
 
-const createInitialForm = (selectedDate?: Date | null, slot?: ClassSlot | null): ClassSlotPayload => {
+const createInitialForm = (
+  selectedDate?: Date | null,
+  slot?: ClassSlot | null,
+  existingDaySlots: ClassSlot[] = [],
+  carryOver?: SlotFormCarryOver | null
+): ClassSlotPayload => {
   if (slot) {
     return {
       workoutCategoryId: slot.workout_category_id,
@@ -58,13 +77,17 @@ const createInitialForm = (selectedDate?: Date | null, slot?: ClassSlot | null):
     }
   }
 
-  const { startAt, endAt } = createDefaultSlotTimes(selectedDate || new Date())
+  const baseDate = selectedDate || new Date()
+  const { startAt, endAt } = existingDaySlots.length > 0
+    ? createNextSlotTimes(baseDate, existingDaySlots)
+    : createDefaultSlotTimes(baseDate)
+
   return {
-    workoutCategoryId: '',
-    title: '',
+    workoutCategoryId: carryOver?.workoutCategoryId || '',
+    title: carryOver?.title || '',
     startAt,
     endAt,
-    capacity: 10,
+    capacity: carryOver?.capacity ?? 10,
     recurrenceRule: null,
   }
 }
@@ -78,27 +101,48 @@ export const SlotFormDialog: React.FC<SlotFormDialogProps> = ({
   categories,
   selectedDate,
   slot,
+  existingDaySlots = [],
+  branchSlots = [],
+  carryOver = null,
   saving = false,
   onClose,
   onSubmit,
 }) => {
-  const [form, setForm] = useState<ClassSlotPayload>(() => createInitialForm(selectedDate, slot))
+  const [form, setForm] = useState<ClassSlotPayload>(() => createInitialForm(selectedDate, slot, existingDaySlots, carryOver))
+
+  const selectedDateLabel = useMemo(() => {
+    if (!selectedDate) return ''
+    return toDateKey(selectedDate)
+  }, [selectedDate])
+
+  const existingSlotSummary = useMemo(
+    () => existingDaySlots.map((daySlot) => `${daySlot.title} (${formatTimeRange(daySlot.start_at, daySlot.end_at)})`),
+    [existingDaySlots]
+  )
+  const overlappingSlot = useMemo(
+    () => findOverlappingSlot(
+      { startAt: form.startAt, endAt: form.endAt },
+      branchSlots,
+      slot?.id
+    ),
+    [branchSlots, form.endAt, form.startAt, slot?.id]
+  )
 
   useEffect(() => {
     if (!open) return
-    setForm(createInitialForm(selectedDate, slot))
-  }, [open, selectedDate, slot])
+    setForm(createInitialForm(selectedDate, slot, existingDaySlots, carryOver))
+  }, [open, selectedDate, slot, existingDaySlots, carryOver])
 
   const handleChange = (field: keyof ClassSlotPayload, value: string | number | null) => {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (continueOnSameDay = false) => {
     await onSubmit({
       ...form,
       title: form.title.trim(),
       recurrenceRule: form.recurrenceRule || null,
-    })
+    }, mode === 'create' ? { continueOnSameDay } : undefined)
   }
 
   const isInvalid = (
@@ -107,7 +151,8 @@ export const SlotFormDialog: React.FC<SlotFormDialogProps> = ({
     !form.startAt ||
     !form.endAt ||
     Number(form.capacity) < 1 ||
-    new Date(form.startAt).getTime() >= new Date(form.endAt).getTime()
+    new Date(form.startAt).getTime() >= new Date(form.endAt).getTime() ||
+    Boolean(overlappingSlot)
   )
 
   return (
@@ -119,6 +164,29 @@ export const SlotFormDialog: React.FC<SlotFormDialogProps> = ({
           </DialogTitle>
         </DialogHeader>
         <div className="p-4 space-y-3">
+          {mode === 'create' && selectedDateLabel ? (
+            <div className="rounded-md border border-[#343637] dark:border-[#6b7280] bg-muted/20 p-3 text-xs space-y-1">
+              <p className="font-bold">{selectedDateLabel} 수업 등록</p>
+              <p className="text-muted-foreground">
+                같은 날 여러 수업은 시작/종료 시간만 다르게 등록하면 됩니다.
+              </p>
+              {existingDaySlots.length > 0 ? (
+                <p className="text-muted-foreground">
+                  기존 {existingDaySlots.length}건 · 다음 시간대가 자동 제안됩니다.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {mode === 'create' && existingSlotSummary.length > 0 ? (
+            <div className="rounded-md border border-[#343637] dark:border-[#6b7280] bg-card p-2 text-xs space-y-1">
+              <p className="font-bold">이 날짜 등록된 수업</p>
+              {existingSlotSummary.map((summary) => (
+                <p key={summary} className="text-muted-foreground truncate">{summary}</p>
+              ))}
+            </div>
+          ) : null}
+
           <div className="space-y-1">
             <Label className="text-[11px] text-muted-foreground leading-none">수업명</Label>
             <Input
@@ -153,6 +221,13 @@ export const SlotFormDialog: React.FC<SlotFormDialogProps> = ({
               </p>
             ) : null}
           </div>
+
+          {overlappingSlot ? (
+            <p className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              같은 시간대에 이미 등록된 수업이 있습니다: {overlappingSlot.title} (
+              {formatTimeRange(overlappingSlot.start_at, overlappingSlot.end_at)})
+            </p>
+          ) : null}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-[3px]">
             <div className="space-y-1">
@@ -190,12 +265,21 @@ export const SlotFormDialog: React.FC<SlotFormDialogProps> = ({
             />
           </div>
         </div>
-        <DialogFooter className="px-4 py-3 border-t border-[#343637] dark:border-[#6b7280]">
+        <DialogFooter className="px-4 py-3 border-t border-[#343637] dark:border-[#6b7280] gap-[3px] sm:justify-end">
           <Button variant="outline" onClick={onClose} disabled={saving}>
             취소
           </Button>
-          <Button onClick={handleSubmit} disabled={saving || isInvalid}>
-            저장
+          {mode === 'create' ? (
+            <Button
+              variant="outline"
+              onClick={() => handleSubmit(true)}
+              disabled={saving || isInvalid}
+            >
+              저장 후 계속
+            </Button>
+          ) : null}
+          <Button onClick={() => handleSubmit(false)} disabled={saving || isInvalid}>
+            {mode === 'create' ? '저장' : '수정 저장'}
           </Button>
         </DialogFooter>
       </DialogContent>

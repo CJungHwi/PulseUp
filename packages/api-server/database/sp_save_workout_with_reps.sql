@@ -35,6 +35,7 @@ BEGIN
     DECLARE v_exercise_id VARCHAR(255);
     DECLARE v_duration INT;
     DECLARE v_reps INT; -- 횟수 변수 추가
+    DECLARE v_is_bilateral TINYINT(1) DEFAULT 0;
     DECLARE v_position VARCHAR(10);
     DECLARE v_exercise_type VARCHAR(255);
     DECLARE v_sequence INT DEFAULT 1;
@@ -53,6 +54,7 @@ BEGIN
     DECLARE v_we_exercise_name VARCHAR(255);
     DECLARE v_we_duration INT;
     DECLARE v_we_reps INT; -- 횟수 변수 추가
+    DECLARE v_we_is_bilateral TINYINT(1) DEFAULT 0;
     DECLARE v_we_position VARCHAR(10);
     DECLARE v_final_sequence INT DEFAULT 1;
     
@@ -195,6 +197,7 @@ BEGIN
         SET v_exercise_id = JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.originalExerciseId'));
         SET v_duration = JSON_EXTRACT(v_current_exercise, '$.duration');
         SET v_reps = COALESCE(JSON_EXTRACT(v_current_exercise, '$.reps'), 0); -- reps 추출 (기본값 0)
+        SET v_is_bilateral = IF(UPPER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.is_bilateral')), '')) IN ('TRUE', '1', 'Y'), 1, 0);
         SET v_round = COALESCE(JSON_EXTRACT(v_current_exercise, '$.round'), 1);
         SET v_position = JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.position'));
         SET v_exercise_type = JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.exercise_type'));
@@ -207,6 +210,7 @@ BEGIN
             method_round,
             duration,
             reps, -- reps 필드 추가
+            is_bilateral,
             position,
             exercise_type,
             created_at,
@@ -218,6 +222,7 @@ BEGIN
             CONCAT(v_round, 'Round'),
             v_duration,
             v_reps, -- reps 값 저장
+            v_is_bilateral,
             NULLIF(v_position, ''),
             v_exercise_type,
             NOW(),
@@ -243,6 +248,7 @@ BEGIN
             IF v_exercise_type = 'DS' THEN
                 SET v_exercise_id = JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.originalExerciseId'));
                 SET v_duration = JSON_EXTRACT(v_current_exercise, '$.duration');
+                SET v_is_bilateral = IF(UPPER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.is_bilateral')), '')) IN ('TRUE', '1', 'Y'), 1, 0);
                 SET v_position = JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.position'));
                 
                 -- exercises 테이블에서 실제 운동명 가져오기
@@ -258,6 +264,7 @@ BEGIN
                     exercise_name,
                     duration,
                     reps, -- reps 필드 추가 (Dynamic은 0)
+                    is_bilateral,
                     position,
                     created_at,
                     updated_at
@@ -270,6 +277,7 @@ BEGIN
                     COALESCE(v_we_exercise_name, 'Dynamic Stretching'), -- 실제 운동명 사용, 없으면 기본값
                     v_duration,
                     0, -- Dynamic은 횟수 없음
+                    v_is_bilateral,
                     v_position, -- 실제 위치 값 사용 (DS1~DS6)
                     NOW(),
                     NOW()
@@ -296,6 +304,7 @@ BEGIN
             SET v_we_exercise_name = JSON_UNQUOTE(JSON_EXTRACT(v_current_workout_exercise, '$.name'));
             SET v_we_duration = JSON_EXTRACT(v_current_workout_exercise, '$.duration');
             SET v_we_reps = COALESCE(JSON_EXTRACT(v_current_workout_exercise, '$.reps'), 0); -- reps 추출
+            SET v_we_is_bilateral = IF(UPPER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(v_current_workout_exercise, '$.is_bilateral')), '')) IN ('TRUE', '1', 'Y'), 1, 0);
             SET v_we_position = JSON_UNQUOTE(JSON_EXTRACT(v_current_workout_exercise, '$.position'));
             
             -- workout_exercises 테이블에 저장 (reps 필드 포함)
@@ -308,6 +317,7 @@ BEGIN
                 exercise_name,
                 duration,
                 reps, -- reps 필드 추가
+                is_bilateral,
                 position,
                 created_at,
                 updated_at
@@ -320,6 +330,7 @@ BEGIN
                 v_we_exercise_name,
                 v_we_duration,
                 v_we_reps, -- reps 값 저장
+                v_we_is_bilateral,
                 NULLIF(v_we_position, ''),
                 NOW(),
                 NOW()
@@ -341,6 +352,7 @@ BEGIN
             IF v_exercise_type = 'CD' THEN
                 SET v_exercise_id = JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.originalExerciseId'));
                 SET v_duration = JSON_EXTRACT(v_current_exercise, '$.duration');
+                SET v_is_bilateral = IF(UPPER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.is_bilateral')), '')) IN ('TRUE', '1', 'Y'), 1, 0);
                 SET v_position = JSON_UNQUOTE(JSON_EXTRACT(v_current_exercise, '$.position'));
                 
                 -- exercises 테이블에서 실제 운동명 가져오기
@@ -356,6 +368,7 @@ BEGIN
                     exercise_name,
                     duration,
                     reps, -- reps 필드 추가 (Cool Down은 0)
+                    is_bilateral,
                     position,
                     created_at,
                     updated_at
@@ -368,6 +381,7 @@ BEGIN
                     COALESCE(v_we_exercise_name, 'Cool Down'), -- 실제 운동명 사용, 없으면 기본값
                     v_duration,
                     0, -- Cool Down은 횟수 없음
+                    v_is_bilateral,
                     v_position, -- 실제 위치 값 사용 (CD1~CD6)
                     NOW(),
                     NOW()

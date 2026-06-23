@@ -13,6 +13,7 @@ import {
   createWorkoutModuleForCircuitType,
   getIntroPreviewMaxMainPositions,
   normalizeCircuitTypeFromMetadata,
+  resolveModuleCircuitType,
   primeIntroStartPreloadForCircuit,
   resolveIntroCircuitKind,
 } from './workout-modules/circuit-registry'
@@ -24,7 +25,13 @@ import { buildLoopQueue } from './workout-modules/circuits/loop/loop-queue-build
 import { buildAmrapQueue } from './workout-modules/circuits/amrap/amrap-queue-builder'
 import type { QueueBuilderFn } from './workout-modules/circuits/shared/queue-builder-types'
 import { parseIntroFocusCommandPayload } from '../common/intro-position-codes'
-import { normalizeGridPosition } from '../common/grid-position-codes'
+import {
+  circuitNeedsHalfSwap,
+  isLegacyMainGridFormat,
+  migrateOldMainGridPosition,
+  normalizeGridPosition,
+  swapGridHalfPosition,
+} from '../common/grid-position-codes'
 import type {
   ExerciseSequence,
   WorkoutPlaySession,
@@ -209,6 +216,27 @@ export class WorkoutPlayService {
     })
   }
 
+  private preserveEmomMethodMetadata(metadata?: Record<string, unknown> | null): void {
+    if (!metadata) return
+
+    const workoutCategory = String(metadata.workoutCategory || '').toUpperCase()
+    if (workoutCategory !== 'EMOM') return
+
+    const originalMethod = String(
+      metadata.emomCircuitType ||
+        metadata.method_type ||
+        metadata.methodType ||
+        metadata.circuit_type ||
+        metadata.circuitType ||
+        '',
+    ).trim().toLowerCase()
+
+    if (originalMethod !== 'stress' && originalMethod !== 'loop') return
+
+    metadata.emomCircuitType = originalMethod
+    if (!metadata.method_type) metadata.method_type = originalMethod
+  }
+
   buildModuleContext(): WorkoutModuleContext {
     const self = this
     return {
@@ -263,9 +291,27 @@ export class WorkoutPlayService {
     if (!this.activePlaySession?.metadata) {
       return createWorkoutModuleForCircuitType('stress')
     }
+    const metadata = this.activePlaySession.metadata as Record<string, unknown>
+    this.preserveEmomMethodMetadata(metadata)
+    const workoutCategory = String(metadata.workoutCategory || '').toUpperCase()
+    const originalMethod = String(metadata.emomCircuitType || '').trim().toLowerCase()
     const circuitType = normalizeCircuitTypeFromMetadata(this.activePlaySession.metadata)
+    if (
+      workoutCategory === 'EMOM' &&
+      (originalMethod === 'stress' || originalMethod === 'loop')
+    ) {
+      metadata.emomCircuitType = originalMethod
+      if (!metadata.method_type) metadata.method_type = originalMethod
+    }
+    // 화면 표시/큐 빌더용 circuitType은 'emom'으로 유지하고,
+    // 모듈 선택만 EMOM-Stress 여부에 따라 'emom-stress'로 분기한다.
     this.activePlaySession.metadata.circuitType = circuitType
-    return createWorkoutModuleForCircuitType(circuitType)
+    const moduleCircuitType = resolveModuleCircuitType(
+      this.activePlaySession.metadata,
+      this.activePlaySession.sequences,
+    )
+    log(`🧭 [WorkoutPlay] 모듈 선택: ${moduleCircuitType} (표시 circuitType=${circuitType})`)
+    return createWorkoutModuleForCircuitType(moduleCircuitType)
   }
 
   async handleWorkoutPlay(data: any): Promise<{ success: boolean; sessionId?: string; message?: string; error?: string }> {
@@ -289,8 +335,21 @@ export class WorkoutPlayService {
       this.cachedInitDisplay = null
       this.cachedIntroDisplay = null
 
-      const normalizedSequences = Array.isArray(data.sequences)
-        ? data.sequences.map((seq: any, idx: number) => {
+      const sourceSequences = Array.isArray(data.sequences) ? data.sequences : []
+      const mainPositions = sourceSequences
+        .filter((seq: any) => {
+          const r = Number(seq?.round)
+          return Number.isFinite(r) && r > 0 && r < 99 && seq?.exercise_type === 'exercise'
+        })
+        .map((seq: any) => (typeof seq?.position === 'string' ? seq.position : undefined))
+      const usesLegacyMainGrid = isLegacyMainGridFormat(mainPositions)
+      // 모든 서킷은 3분할 전반 A/B·후반 C/D 배치를 사용한다.
+      // 과거 AMRAP/EMOM 전용 B↔C 스왑 훅은 공통 함수에서 no-op으로 유지된다.
+      const layoutCircuitType = normalizeCircuitTypeFromMetadata(data?.metadata)
+      const shouldHalfSwap = circuitNeedsHalfSwap(layoutCircuitType) && getScreenMode() !== 'five'
+
+      const normalizedSequences = sourceSequences.length > 0
+        ? sourceSequences.map((seq: any, idx: number) => {
           const rawRound = seq?.round
           const roundNum = Number(rawRound)
           const majorCategoryRaw = String(seq?.major_category || seq?.majorCategory || seq?.workoutCategory || '').trim().toLowerCase()
@@ -307,7 +366,34 @@ export class WorkoutPlayService {
           }
           if (normalizedRound === null) normalizedRound = 1
 
-          return { ...seq, round: normalizedRound, __srcIndex: idx }
+          const isMainExercise =
+            normalizedRound > 0 &&
+            normalizedRound < 99 &&
+            seq?.exercise_type === 'exercise'
+          const basePosition = isMainExercise
+            ? usesLegacyMainGrid
+              ? migrateOldMainGridPosition(seq?.position)
+              : normalizeGridPosition(seq?.position)
+            : seq?.position
+          const normalizedPosition = isMainExercise && shouldHalfSwap
+            ? swapGridHalfPosition(basePosition)
+            : basePosition
+          const reps = Number(
+            seq?.reps ??
+              seq?.rep_count ??
+              seq?.reps_count ??
+              seq?.repeat_count ??
+              seq?.repetitions ??
+              0,
+          )
+
+          return {
+            ...seq,
+            round: normalizedRound,
+            position: normalizedPosition,
+            reps: Number.isFinite(reps) && reps > 0 ? reps : seq?.reps,
+            __srcIndex: idx,
+          }
         })
         : []
 
@@ -416,6 +502,7 @@ export class WorkoutPlayService {
         status: 'ready',
         metadata: data.metadata
       }
+      this.preserveEmomMethodMetadata(this.activePlaySession.metadata as Record<string, unknown>)
 
       const pickDisplay = (raw: unknown): ResolvedMonitorDisplay | null => {
         if (!raw || typeof raw !== 'object') return null
@@ -724,7 +811,7 @@ export class WorkoutPlayService {
 
     const target = parseIntroFocusCommandPayload(data)
     if (!target) {
-      return { success: false, error: '유효하지 않은 선택입니다. A/B/C와 1~6을 선택해주세요.' }
+      return { success: false, error: '유효하지 않은 선택입니다. A/B/C/D와 1~3을 선택해주세요.' }
     }
 
     const sequence = this.findIntroSequenceForPosition(target.internalPosition)

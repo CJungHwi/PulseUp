@@ -1548,6 +1548,7 @@ BEGIN
         e.video_start_time,
         e.video_end_time,
         e.video_loop_count,
+        e.is_bilateral,
         e.is_active,
         e.created_at,
         e.updated_at,
@@ -1598,6 +1599,7 @@ CREATE OR REPLACE PROCEDURE sp_update_exercise(
     IN p_video_start_time INT,
     IN p_video_end_time INT,
     IN p_video_loop_count INT,
+    IN p_is_bilateral BOOLEAN,
     IN p_is_active BOOLEAN
 )
 BEGIN
@@ -1639,6 +1641,7 @@ BEGIN
         video_start_time = COALESCE(p_video_start_time, video_start_time),
         video_end_time = COALESCE(p_video_end_time, video_end_time),
         video_loop_count = COALESCE(p_video_loop_count, video_loop_count),
+        is_bilateral = COALESCE(p_is_bilateral, is_bilateral),
         is_active = COALESCE(p_is_active, is_active),
         updated_at = CURRENT_TIMESTAMP
     WHERE id = p_exercise_id;
@@ -1674,6 +1677,7 @@ CREATE OR REPLACE PROCEDURE sp_create_exercise(
     IN p_video_start_time INT,
     IN p_video_end_time INT,
     IN p_video_loop_count INT,
+    IN p_is_bilateral BOOLEAN,
     IN p_is_active BOOLEAN
 )
 BEGIN
@@ -1713,12 +1717,13 @@ BEGIN
         id, number, workout_category_id, level, name_en, name_ko,
         target_muscles, characteristics, equipment, purpose,
         video_url, thumbnail_url, video_title, video_duration,
-        video_start_time, video_end_time, video_loop_count, is_active
+        video_start_time, video_end_time, video_loop_count, is_bilateral, is_active
     ) VALUES (
         v_exercise_id, p_number, p_workout_category_id, p_level, p_name_en, p_name_ko,
         p_target_muscles, p_characteristics, p_equipment, p_purpose,
         p_video_url, p_thumbnail_url, p_video_title, p_video_duration,
         p_video_start_time, p_video_end_time, p_video_loop_count,
+        COALESCE(p_is_bilateral, FALSE),
         COALESCE(p_is_active, TRUE)
     );
     
@@ -1902,8 +1907,10 @@ BEGIN
 END //
 
 -- 운동 저장 프로시저 (모든 운동 카테고리 지원)
--- 이 프로시저는 sp_save_power_circuit_new.sql 파일에 정의되어 있습니다.
--- 해당 파일을 별도로 실행하여 프로시저를 생성하세요.
+-- ⚠️ sp_SaveWorkout 의 정식(최신) 정의는 sp_save_workout_with_reps.sql 파일입니다 (19-param: reps + DS/CD 저장).
+--    반드시 아래 파일을 실행해 프로시저를 생성/갱신하세요:
+--      mysql -u root -p workout_system < database/sp_save_workout_with_reps.sql
+--    (구버전 sp_save_power_circuit_new.sql 의 10-param 정의는 reps/DS 를 저장하지 못하므로 사용 금지)
 
 -- ============================================================================
 -- 운동 기록 조회 관련 프로시저
@@ -1952,7 +1959,7 @@ BEGIN
             COALESCE(wc.major_category, whm.workout_categories_id) AS major_category,
             COALESCE(wc.major_category_name, whm.workout_categories_id) AS major_category_name,
             CASE
-                WHEN COALESCE(wc.major_category, whm.workout_categories_id) = 'EMOM' THEN
+                WHEN COALESCE(wc.major_category, whm.workout_categories_id) IN ('EMOM', 'COMBO') THEN
                     CASE
                         WHEN LOWER(COALESCE(whm.method_type, '')) LIKE '%stress%' THEN 'stress'
                         ELSE 'loop'
@@ -2001,7 +2008,7 @@ BEGIN
                OR wc.minor_category = p_workout_category)
           AND (p_circuit_type IS NULL OR p_circuit_type = ''
                OR CASE
-                    WHEN COALESCE(wc.major_category, whm.workout_categories_id) = 'EMOM' THEN
+                    WHEN COALESCE(wc.major_category, whm.workout_categories_id) IN ('EMOM', 'COMBO') THEN
                         CASE
                             WHEN LOWER(COALESCE(whm.method_type, '')) LIKE '%stress%' THEN 'stress'
                             ELSE 'loop'
@@ -2033,7 +2040,7 @@ BEGIN
     FROM workout_history_master whm
     WHERE whm.id = p_master_id;
     
-    -- 상세 정보 조회 (reps 필드 포함)
+    -- 상세 정보 조회 (reps, is_bilateral 필드 포함)
     SELECT 
         whd.workout_history_master_id,
         whd.seq,
@@ -2041,6 +2048,7 @@ BEGIN
         whd.method_round,
         whd.duration,
         COALESCE(whd.reps, 0) as reps, -- reps 필드 추가 (NULL이면 0)
+        COALESCE(whd.is_bilateral, e.is_bilateral, 0) as is_bilateral,
         whd.position,
         whd.exercise_type,
         e.name_ko as exercise_name,

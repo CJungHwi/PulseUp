@@ -1,7 +1,7 @@
 import type { WorkoutModuleContext } from '../shared/base-module'
 import { log } from '../shared/base-module'
-import { collectMainHalfGroupExercises } from '../shared/main-half-group-utils'
 import { buildTimelineForStress, getPreloadWindow } from '../shared/timeline-utils'
+import { collectStressGroupExercises } from './stress-order'
 
 /** CD 스트레칭 프리로드 위임 (보통 `PreloadManager`) */
 export interface StressCooldownPreloadDelegate {
@@ -40,11 +40,10 @@ export const preloadNextStressGroup = (
   stressGroupIndex: number,
   currentRound: number,
 ): void => {
-  const nextPosMap = collectMainHalfGroupExercises(
+  const nextGroupSeqs = collectStressGroupExercises(
     ctx.activePlaySession!.sequences,
     stressGroupIndex + 1,
   )
-  const nextGroupSeqs = Array.from(nextPosMap.values())
   if (nextGroupSeqs.length > 0) {
     const nextKey = `stress:${stressGroupIndex + 1}`
     if (!ctx.preloadedGroupKeys.has(nextKey)) {

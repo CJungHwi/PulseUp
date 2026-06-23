@@ -11,6 +11,7 @@ import { getTimerUiStrategy } from '../circuits/timer-ui-registry.js'
 import {
   resolveTimerCircuitType,
   resolveWorkoutCircuitType,
+  resolveWorkoutMethodType,
   type WorkoutCircuitType,
 } from './workout-timer-circuit.js'
 import { createWorkoutPlayTimerHtml } from './workout-play-timer-layout.js'
@@ -55,6 +56,8 @@ export class WorkoutPlayTimerUI {
   private stickyCircuitType: WorkoutCircuitType | null = null
   private currentCircuitType: string = ''
   private currentSequenceType: string = ''
+  /** EMOM-Stress 등에서 같은 운동 SET 연속 전환 시 종료 벨 억제 */
+  private suppressCountdownBell: boolean = false
   /** DS(0) / CD(99) 여부 — EMOM·AMRAP도 해당 구간은 초 단위 표시 */
   private countdownViewRound: number = 0
   /** workout-play-sequence / 인트로 메타 — 타이머 RND·SET 분모(workoutPlans.length)용 */
@@ -274,6 +277,7 @@ export class WorkoutPlayTimerUI {
     const timerStrategy = getTimerUiStrategy(circuitType)
     const isLoopCircuit = timerStrategy.exerciseCountMode === 'loop-sets'
     const isEmom = circuitType === 'emom'
+    const isEmomStress = isEmom && resolveWorkoutMethodType(data) === 'stress'
 
     if (isEmom && typeof data.totalRounds === 'number' && data.totalRounds > 0) {
       this.totalRounds = data.totalRounds
@@ -351,7 +355,9 @@ export class WorkoutPlayTimerUI {
       const isMainTraining = category === 'MAIN'
 
       // Main Training: 서킷별 Set / RND — timerStrategy
-      if (isMainTraining) {
+      if (isEmomStress) {
+        roundLabelEl.textContent = 'SET'
+      } else if (isMainTraining) {
         roundLabelEl.textContent = String(timerStrategy.mainTrainingRoundColumnLabel).toUpperCase()
       } else {
         roundLabelEl.textContent = 'RND'
@@ -403,6 +409,9 @@ export class WorkoutPlayTimerUI {
       currentRound,
       metadata: data.metadata,
     })
+
+    // EMOM-Stress 등에서 같은 운동 SET 연속 전환이면 종료 벨 억제
+    this.suppressCountdownBell = (data as { suppressCountdownBell?: boolean }).suppressCountdownBell === true
 
     // 카운트다운 시작
     this.startCountdown(dur > 0 ? dur : 60, data.sequence?.exercise_type)
@@ -486,7 +495,9 @@ export class WorkoutPlayTimerUI {
     const circuitTypeName = circuitTypeMap[circuitType] || circuitType
 
     const ct = circuitType.toLowerCase()
-    if (ct === 'amrap' || ct === 'emom') {
+    if (ct === 'emom' && resolveWorkoutMethodType(data) === 'stress') {
+      displayCategory = 'EMOM (Stress)'
+    } else if (ct === 'amrap' || ct === 'emom') {
       displayCategory = majorCategoryName
     } else {
       displayCategory = `${majorCategoryName} ${circuitTypeName}`
@@ -512,6 +523,7 @@ export class WorkoutPlayTimerUI {
       setCountdownInterval: (value) => { this.countdownInterval = value },
       getCurrentSequenceType: () => this.currentSequenceType,
       setCurrentSequenceType: (value) => { this.currentSequenceType = value },
+      getSuppressCountdownBell: () => this.suppressCountdownBell,
       getCurrentCircuitType: () => this.currentCircuitType,
       getCountdownViewRound: () => this.countdownViewRound,
       setStartCountdownActive: (value) => { this.isStartCountdown = value },

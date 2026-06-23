@@ -1,7 +1,7 @@
 /**
  * 페이지 요약 — 사용자 관리 (`/admin/usermanager`)
  *
- * 기능: 사용자 목록·검색·승인·정지·역할/지점 할당·비밀번호 초기화.
+ * 기능: 사용자 목록·검색·역할/지점 필터·승인·정지·역할/지점 할당·비밀번호 초기화.
  *
  * 호출/연동:
  * - `adminService.getUsers`, `updateUser`, `approveUser`, `suspendUser`, `reactivateUser`
@@ -9,10 +9,11 @@
  * - `branchApi.getBranches` (BranchSelect 내부)
  *
  * 관련 컴포넌트(`./components/`):
- * - `UserManagementFilterBar`: 검색/역할 필터/새로고침/사용자 추가
+ * - `UserManagementFilterBar`: 검색/역할·지점 필터/새로고침/사용자 추가
  * - `UserManagementTable`: 사용자 목록 테이블 + 무한 스크롤
  * - `UserManagementEditForm`: 우측 편집 폼 + 액션
  * - `BranchSelect`: 지점 선택 셀렉트
+ * - `BranchFilterSelect`: 조회용 지점 필터
  * - `userManagementUtils.ts`: 날짜 포맷/역할 라벨·배지
  *
  * 외부 컴포넌트: `@/components/Admin/AddUserModal`
@@ -24,11 +25,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle, AlertCircle, XCircle } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { adminService, type User, type UserListResponse } from '@/services/admin.service'
+import { branchApi } from '@/services/branchApi'
 import { userManagerApi } from '@/services/userManagerApi'
 import { useAuth } from '@/hooks/useAuth'
 import { AddUserModal } from '@/components/Admin/AddUserModal'
 import { UserManagementFilterBar } from './components/UserManagementFilterBar'
 import { UserManagementTable } from './components/UserManagementTable'
+import type { BranchFilterOption } from './components/BranchFilterSelect'
 import {
   UserManagementEditForm,
   type UserManagementFormState,
@@ -69,6 +72,9 @@ export const UserManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('')
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [branches, setBranches] = useState<BranchFilterOption[]>([])
+  const [branchesLoading, setBranchesLoading] = useState(false)
 
   const isFetchingRef = useRef(false)
 
@@ -81,6 +87,37 @@ export const UserManagement: React.FC = () => {
     const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 500)
     return () => clearTimeout(timer)
   }, [searchTerm])
+
+  useEffect(() => {
+    if (!isSuperAdmin) return
+
+    const loadBranches = async () => {
+      setBranchesLoading(true)
+      try {
+        const response = await branchApi.getBranches()
+        if (!response.success) {
+          setBranches([])
+          return
+        }
+
+        const branchItems = response.data?.items || []
+        setBranches(
+          branchItems.map((branch) => ({
+            id: String(branch.id),
+            name: branch.name,
+            region: branch.region,
+          }))
+        )
+      } catch (err) {
+        console.error('지점 목록 로드 실패:', err)
+        setBranches([])
+      } finally {
+        setBranchesLoading(false)
+      }
+    }
+
+    loadBranches()
+  }, [isSuperAdmin])
 
   const fetchUsers = async (page: number = 1, isLoadMore: boolean = false) => {
     if (isFetchingRef.current) return
@@ -96,6 +133,7 @@ export const UserManagement: React.FC = () => {
           : roleFilter === 'all'
             ? undefined
             : roleFilter || undefined,
+        branchId: isSuperAdmin && branchFilter !== 'all' ? branchFilter : undefined,
       })
       setUsers((prev) => (isLoadMore ? [...prev, ...response.users] : response.users))
       setPagination(response.pagination)
@@ -111,7 +149,7 @@ export const UserManagement: React.FC = () => {
 
   useEffect(() => {
     fetchUsers(1)
-  }, [debouncedSearchTerm, roleFilter])
+  }, [debouncedSearchTerm, roleFilter, branchFilter])
 
   const handleUserSelect = (user: User) => {
     setSelectedUserId(user.id)
@@ -272,6 +310,11 @@ export const UserManagement: React.FC = () => {
         onSearchTermChange={setSearchTerm}
         roleFilter={roleFilter}
         onRoleFilterChange={setRoleFilter}
+        branchFilter={branchFilter}
+        onBranchFilterChange={setBranchFilter}
+        branches={branches}
+        branchesLoading={branchesLoading}
+        showBranchFilter={isSuperAdmin}
         loading={loading}
         isBranchAdmin={isBranchAdmin}
         onRefresh={() => fetchUsers(pagination.page)}

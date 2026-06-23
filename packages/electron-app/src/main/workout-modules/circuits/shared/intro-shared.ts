@@ -2,15 +2,13 @@ import {
   DEFAULT_GRID_POSITION,
   STRESS_LAP_ORDER,
   normalizeGridPosition,
+  parseGridPosition,
 } from '../../../../common/grid-position-codes.js'
 
 export const positionInMainLrGrid = (s: { position?: string }): boolean => {
   if (typeof s?.position !== 'string') return false
   const normalized = normalizeGridPosition(s.position)
-  const match = normalized.match(/^[AB](\d+)$/i)
-  if (!match) return false
-  const index = Number(match[1])
-  return index >= 1 && index <= 6
+  return parseGridPosition(normalized) !== null
 }
 
 const INTRO_MAIN_PREVIEW_ORDER = STRESS_LAP_ORDER
@@ -30,7 +28,7 @@ export const sortIntroMainPreviewSequences = <T extends { position?: string }>(
   })
 }
 
-/** 첫 메인 라운드의 A1–B6 포지션만 (Stress / Loop / AMRAP 인트로 공통) */
+/** 첫 메인 라운드의 A1–D3 포지션만 (Stress / Loop / AMRAP 인트로 공통) */
 export const collectIntroSequencesFirstMainRound = <T extends { round: number | string; position?: string }>(
   allExercises: T[],
   mainRound: number,
@@ -39,7 +37,7 @@ export const collectIntroSequencesFirstMainRound = <T extends { round: number | 
 
 /**
  * 인트로·프리뷰에서 두 번째 랩으로 붙일 메인 라운드 번호.
- * 후반이 있으면 rFirst+halfRounds(전반 첫 라운드 기준 후반 시작) 우선 → A4~6 영상.
+ * 후반이 있으면 rFirst+halfRounds(전반 첫 라운드 기준 후반 시작) 우선 → C/D 영상.
  * 전반만 있으면 같은 반의 다음 플랜 라운드(예: round 2).
  */
 export const resolveIntroCompanionMainRound = (

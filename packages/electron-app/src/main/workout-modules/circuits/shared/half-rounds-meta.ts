@@ -1,6 +1,5 @@
 import type { WorkoutPlaySession } from '../../../types'
 import {
-  GRID_SECOND_HALF_PREFIX,
   parseGridPosition,
   normalizeGridPosition,
 } from '../../../../common/grid-position-codes.js'
@@ -39,7 +38,7 @@ export const getHalfRoundsCountFromSession = (
     const maxR = Math.max(...mainEx.map((s) => Number(s.round)))
     const hasBackHalfSlots = mainEx.some((s) => {
       const parsed = parseGridPosition(normalizeGridPosition(s.position))
-      return parsed ? parsed.prefix === GRID_SECOND_HALF_PREFIX : false
+      return parsed ? parsed.set === 'set2' : false
     })
     if (hasBackHalfSlots && maxR >= 4) {
       const inferred = Math.floor(maxR / 2)

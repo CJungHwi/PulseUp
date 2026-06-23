@@ -46,7 +46,16 @@ const masterIdParamsSchema = z.object({
   masterId: z.string().min(1)
 });
 
-const workoutSettingMethodTypeSchema = z.enum(['stress', 'loop', 'AMRAP', 'EMOM', 'EMOM-STRESS', 'EMOM-LOOP']);
+const workoutSettingMethodTypeSchema = z.enum([
+  'stress',
+  'loop',
+  'AMRAP',
+  'EMOM',
+  'EMOM-STRESS',
+  'EMOM-LOOP',
+  'COMBO-STRESS',
+  'COMBO-LOOP'
+]);
 const workoutSettingRowSchema = z.object({
   round: z.number().int().min(1),
   time: z.number().int().min(0),
@@ -286,18 +295,13 @@ const callSaveWorkoutProcedure = async (args: SaveWorkoutProcedureArgs) => {
     }
   }
 
-  return callProcedure('sp_SaveWorkout', [
-    args.userId,
-    args.date,
-    args.time,
-    args.memo,
-    args.workoutCategory,
-    args.plansJson,
-    args.exercisesJson,
-    args.workoutExercisesJson,
-    args.effectiveMasterId,
-    args.admin
-  ]);
+  // ⚠️ 10-param 구버전(sp_save_power_circuit_new.sql)으로의 fallback 은 의도적으로 제거함.
+  // 구버전은 reps/DS 를 저장하지 못해 데이터를 조용히 유실시키므로, 여기까지 왔다는 것은
+  // DB 에 최신 sp_SaveWorkout(19-param) 이 배포되지 않았다는 의미 → 명확히 실패시킨다.
+  throw new Error(
+    'sp_SaveWorkout 파라미터 수가 일치하지 않습니다. 최신 프로시저를 DB 에 적용하세요: ' +
+    'mysql -u root -p workout_system < database/sp_save_workout_with_reps.sql'
+  );
 };
 
 const hyberStrengthCircuitSaveBodySchema = z.object({
@@ -322,6 +326,7 @@ const hyberStrengthCircuitSaveBodySchema = z.object({
       originalExerciseId: z.string().min(1),
       duration: z.number().optional(),
       reps: z.number().optional(),
+      is_bilateral: z.boolean().optional(),
       round: z.number().optional(),
       position: z.string().optional().nullable(),
       exercise_type: z.string().min(1),
@@ -348,6 +353,50 @@ const hyberStrengthCircuitSaveBodySchema = z.object({
   workoutScope: workoutScopeSchema,
   workout_scope: workoutScopeSchema
 });
+
+const normalizeBilateralExercisePayloads = <T extends { exercises?: any[]; workoutExercises?: any[] }>(body: T): T => {
+  const bilateralByDetail = new Map<string, boolean>();
+  const makeKey = (exerciseId: unknown, position: unknown) =>
+    `${String(exerciseId || '').trim()}::${String(position || '').trim()}`;
+
+  for (const ex of body.exercises || []) {
+    const exerciseId = ex?.originalExerciseId || ex?.exercise_id || ex?.id;
+    if (!exerciseId) continue;
+    const isBilateral = parseLooseBoolean(ex?.is_bilateral);
+    bilateralByDetail.set(makeKey(exerciseId, ex?.position), isBilateral);
+    if (!bilateralByDetail.has(makeKey(exerciseId, ''))) {
+      bilateralByDetail.set(makeKey(exerciseId, ''), isBilateral);
+    }
+  }
+
+  body.workoutExercises = (body.workoutExercises || []).map((item: any) => {
+    if (item?.exercise_type !== 'exercise') return item;
+    if (item?.is_bilateral !== undefined) return item;
+    const byPosition = bilateralByDetail.get(makeKey(item?.exercise_id, item?.position));
+    const byExercise = bilateralByDetail.get(makeKey(item?.exercise_id, ''));
+    return { ...item, is_bilateral: byPosition ?? byExercise ?? false };
+  });
+
+  const bilateralByExecution = new Map<string, boolean>();
+  for (const item of body.workoutExercises || []) {
+    if (item?.exercise_type !== 'exercise' || !item?.exercise_id) continue;
+    const isBilateral = parseLooseBoolean(item?.is_bilateral);
+    bilateralByExecution.set(makeKey(item.exercise_id, item.position), isBilateral);
+    if (!bilateralByExecution.has(makeKey(item.exercise_id, ''))) {
+      bilateralByExecution.set(makeKey(item.exercise_id, ''), isBilateral);
+    }
+  }
+
+  body.exercises = (body.exercises || []).map((ex: any) => {
+    if (ex?.is_bilateral !== undefined) return ex;
+    const exerciseId = ex?.originalExerciseId || ex?.exercise_id || ex?.id;
+    const byPosition = bilateralByExecution.get(makeKey(exerciseId, ex?.position));
+    const byExercise = bilateralByExecution.get(makeKey(exerciseId, ''));
+    return { ...ex, is_bilateral: byPosition ?? byExercise ?? false };
+  });
+
+  return body;
+};
 
 const workoutHistoryDeleteParamsSchema = z.object({
   masterId: z.string().min(1)
@@ -661,7 +710,7 @@ router.post(
       const userId = authedReq.user?.id;
       if (!userId) return res.status(401).json(errorResponse('인증 정보가 없습니다', 'UNAUTHORIZED'));
 
-      const body = req.body as z.infer<typeof hyberStrengthCircuitSaveBodySchema>;
+      const body = normalizeBilateralExercisePayloads(req.body as z.infer<typeof hyberStrengthCircuitSaveBodySchema>);
       const incomingMasterId = body.masterId?.trim() || null;
 
       // 저장 규칙:
@@ -806,7 +855,7 @@ router.post(
       const userId = authedReq.user?.id;
       if (!userId) return res.status(401).json(errorResponse('인증 정보가 없습니다', 'UNAUTHORIZED'));
 
-      const body = req.body as z.infer<typeof hyberStrengthCircuitSaveBodySchema>;
+      const body = normalizeBilateralExercisePayloads(req.body as z.infer<typeof hyberStrengthCircuitSaveBodySchema>);
       body.method_type = body.method_type || 'AMRAP';
       body.plans = (body.plans || []).map((p: any) => {
         const raw = String(p?.circuit_type ?? '').toLowerCase();
@@ -943,7 +992,7 @@ router.post(
       const userId = authedReq.user?.id;
       if (!userId) return res.status(401).json(errorResponse('인증 정보가 없습니다', 'UNAUTHORIZED'));
 
-      const body = req.body as z.infer<typeof hyberStrengthCircuitSaveBodySchema>;
+      const body = normalizeBilateralExercisePayloads(req.body as z.infer<typeof hyberStrengthCircuitSaveBodySchema>);
       body.method_type = normalizeEmomCircuitType(body.method_type);
       body.plans = (body.plans || []).map((p: any) => {
         const raw = String(p?.circuit_type ?? '').toLowerCase();
@@ -1126,7 +1175,7 @@ router.get(
       const workoutScopeFilter = query.workoutScope || query.workout_scope || null;
       const effectiveCircuitTypeSql = `
         CASE
-          WHEN COALESCE(wc.major_category, whm.workout_categories_id) = 'EMOM' THEN
+          WHEN COALESCE(wc.major_category, whm.workout_categories_id) IN ('EMOM', 'COMBO') THEN
             CASE
               WHEN LOWER(COALESCE(whm.method_type, '')) LIKE '%stress%' THEN 'stress'
               ELSE 'loop'

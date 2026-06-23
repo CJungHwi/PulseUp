@@ -1,5 +1,5 @@
 /**
- * WorkoutScopeFormDialog — scope 등록/수정 다이얼로그
+ * WorkoutScopeFormDialog — 운동저장구분 등록/수정 다이얼로그
  */
 
 import React from 'react'
@@ -43,19 +43,19 @@ export const WorkoutScopeFormDialog: React.FC<WorkoutScopeFormDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isCreate ? '운동 Scope 등록' : '운동 Scope 수정'}</DialogTitle>
+          <DialogTitle>{isCreate ? '운동저장구분 등록' : '운동저장구분 수정'}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
           <div className="grid gap-2">
-            <Label htmlFor="scopeCode">Scope 코드</Label>
+            <Label htmlFor="scopeCode">운동저장구분 코드</Label>
             <Input
               id="scopeCode"
               value={formData.scopeCode}
               disabled={!isCreate}
               placeholder="예: TOTAL"
               onChange={(e) => onChange('scopeCode', e.target.value.toUpperCase())}
-              aria-label="Scope 코드"
+              aria-label="운동저장구분 코드"
             />
           </div>
 

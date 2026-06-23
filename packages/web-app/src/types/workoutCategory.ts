@@ -43,6 +43,7 @@ export interface Exercise {
   video_start_time?: number;
   video_end_time?: number;
   video_loop_count?: number;
+  is_bilateral?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -101,6 +102,7 @@ export interface CreateExerciseRequest {
   video_start_time?: number;
   video_end_time?: number;
   video_loop_count?: number;
+  is_bilateral?: boolean;
   major_category?: string;
   is_active?: boolean;
 }
@@ -122,6 +124,7 @@ export interface UpdateExerciseRequest {
   video_start_time?: number;
   video_end_time?: number;
   video_loop_count?: number;
+  is_bilateral?: boolean;
   is_active?: boolean;
 }
 

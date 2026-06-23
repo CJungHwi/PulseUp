@@ -1,6 +1,5 @@
 import type { WorkoutGridDisplay } from '../components/WorkoutGridDisplay.js'
 import type { DisplayType } from '../renderer-display-types.js'
-import { parseGridPosition } from '../../common/grid-position-codes.js'
 import { mapMainPositionToDisplayLabel } from '../five-screen-seek-label.js'
 
 export type PreviewSequenceScheduleDeps = {
@@ -23,36 +22,29 @@ export const schedulePreviewMainSequences = (
   const {
     grid,
     currentDisplay,
-    isLeftMonitor,
     usesFiveScreenPanelQueue,
     syncStartAtMs,
     getMainTargetSetFromPosition,
     getCurrentActiveSet,
     setCurrentActiveSet,
-    isPositionForLeftMonitor,
   } = deps
 
   sequences.forEach((seq: any, index: number) => {
     const position = typeof seq?.position === 'string' ? seq.position : ''
     if (!position) return
 
-    const parsed = parseGridPosition(position)
-    if (parsed) {
-      if ((isLeftMonitor && parsed.side !== 'left') || (!isLeftMonitor && parsed.side !== 'right')) return
-      const derivedSet = getMainTargetSetFromPosition(position)
-      if (derivedSet && derivedSet !== getCurrentActiveSet()) {
-        grid.switchSet(derivedSet)
-        setCurrentActiveSet(derivedSet)
-      }
-    } else {
-      const isForLeft = isPositionForLeftMonitor(position)
-      if ((isLeftMonitor && !isForLeft) || (!isLeftMonitor && isForLeft)) return
+    const displayPos = mapMainPositionToDisplayLabel(currentDisplay, position, {
+      fiveScreen: usesFiveScreenPanelQueue,
+    })
+    if (!displayPos) return
+
+    const derivedSet = getMainTargetSetFromPosition(position)
+    if (derivedSet && derivedSet !== getCurrentActiveSet()) {
+      grid.switchSet(derivedSet)
+      setCurrentActiveSet(derivedSet)
     }
 
     const delay = index * 40
-    const displayPos =
-      mapMainPositionToDisplayLabel(currentDisplay, position, { fiveScreen: usesFiveScreenPanelQueue }) ??
-      position
     setTimeout(() => {
       grid.playVideo(seq, displayPos, syncStartAtMs)
     }, delay)

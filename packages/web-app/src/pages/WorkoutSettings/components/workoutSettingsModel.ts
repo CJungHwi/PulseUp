@@ -1,4 +1,11 @@
-export type MethodType = 'stress' | 'loop' | 'AMRAP' | 'EMOM-STRESS' | 'EMOM-LOOP'
+export type MethodType =
+  | 'stress'
+  | 'loop'
+  | 'AMRAP'
+  | 'EMOM-STRESS'
+  | 'EMOM-LOOP'
+  | 'COMBO-STRESS'
+  | 'COMBO-LOOP'
 
 export interface WorkoutSettingRow {
   round: number
@@ -28,7 +35,9 @@ export const METHOD_LABELS: Record<MethodType, string> = {
   loop: 'MAIN - LOOP',
   AMRAP: 'AMRAP',
   'EMOM-STRESS': 'EMOM - STRESS',
-  'EMOM-LOOP': 'EMOM - LOOP'
+  'EMOM-LOOP': 'EMOM - LOOP',
+  'COMBO-STRESS': 'COMBO - STRESS',
+  'COMBO-LOOP': 'COMBO - LOOP'
 }
 
 export const DEFAULT_ROWS: Record<MethodType, WorkoutSettingRow[]> = {
@@ -53,14 +62,29 @@ export const DEFAULT_ROWS: Record<MethodType, WorkoutSettingRow[]> = {
   'EMOM-LOOP': [
     { round: 1, time: 1, rest: 0, waterBreak: 1, reps: 15, sortOrder: 1, isActive: true },
     { round: 2, time: 1, rest: 0, waterBreak: 0, reps: 15, sortOrder: 2, isActive: true }
+  ],
+  'COMBO-STRESS': [
+    { round: 1, time: 0, rest: 0, waterBreak: 0, reps: 10, sortOrder: 1, isActive: true },
+    { round: 2, time: 0, rest: 0, waterBreak: 0, reps: 10, sortOrder: 2, isActive: true },
+    { round: 3, time: 60, rest: 20, waterBreak: 0, reps: 10, sortOrder: 3, isActive: true }
+  ],
+  'COMBO-LOOP': [
+    { round: 1, time: 0, rest: 0, waterBreak: 0, reps: 10, sortOrder: 1, isActive: true },
+    { round: 2, time: 0, rest: 0, waterBreak: 0, reps: 10, sortOrder: 2, isActive: true },
+    { round: 3, time: 60, rest: 20, waterBreak: 0, reps: 10, sortOrder: 3, isActive: true }
   ]
 }
+
+export const COMBO_ROW_COUNT = 3
 
 export const isTimeStructuredMethod = (methodType: MethodType): boolean =>
   methodType === 'AMRAP' || methodType === 'EMOM-STRESS' || methodType === 'EMOM-LOOP'
 
 export const isEmomMethod = (methodType: MethodType): boolean =>
   methodType === 'EMOM-STRESS' || methodType === 'EMOM-LOOP'
+
+export const isComboMethod = (methodType: MethodType): boolean =>
+  methodType === 'COMBO-STRESS' || methodType === 'COMBO-LOOP'
 
 export const normalizeRows = (
   rows: WorkoutSettingApiRow[],
@@ -96,6 +120,18 @@ export const normalizeRows = (
         waterBreak: wbSec > 0 ? Math.floor(wbSec / 60) : restMin
       }
     })
+  }
+
+  if (isComboMethod(methodType)) {
+    const comboRows =
+      mapped.length >= COMBO_ROW_COUNT
+        ? mapped.slice(0, COMBO_ROW_COUNT)
+        : DEFAULT_ROWS[methodType]
+    return comboRows.map((row, index, arr) =>
+      index < arr.length - 1
+        ? { ...row, round: index + 1, time: 0, rest: 0, waterBreak: 0, sortOrder: index + 1 }
+        : { ...row, round: index + 1, waterBreak: 0, sortOrder: index + 1 }
+    )
   }
 
   return mapped

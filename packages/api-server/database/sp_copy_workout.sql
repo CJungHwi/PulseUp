@@ -78,6 +78,7 @@ BEGIN
         calories_burned,
         average_heart_rate,
         max_heart_rate,
+        is_bilateral,
         notes,
         created_at, 
         updated_at
@@ -93,6 +94,7 @@ BEGIN
         calories_burned,
         average_heart_rate,
         max_heart_rate,
+        COALESCE(is_bilateral, 0),
         notes,
         NOW(),
         NOW()
@@ -111,6 +113,7 @@ BEGIN
         exercise_name,
         duration,
         reps,
+        is_bilateral,
         position,
         created_at,
         updated_at
@@ -125,6 +128,7 @@ BEGIN
         exercise_name,
         duration,
         COALESCE(reps, NULL),  -- reps 필드가 있으면 복사, 없으면 NULL
+        COALESCE(is_bilateral, 0),
         position,
         NOW(),
         NOW()

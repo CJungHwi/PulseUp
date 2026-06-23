@@ -1,3 +1,9 @@
+/**
+ * ExerciseList
+ * - 기능: 운동 마스터 목록 검색/필터/무한 스크롤, 선택 운동 상세 연결
+ * - API: 부모 `WorkoutManager`의 getExercisesList 결과 표시
+ * - 흐름: 운동구분·검색어 필터 → 목록 행 선택 → 상세 폼/영상 미리보기 갱신
+ */
 import React, { useMemo, useRef } from 'react'
 import {
     Table,
@@ -182,19 +188,20 @@ export const ExerciseList: React.FC<ExerciseListProps> = ({
                                 <TableHead className="w-[100px] h-[45px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]">자극부위</TableHead>
                                 <TableHead className="w-[100px] h-[45px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]">필요기구</TableHead>
                                 <TableHead className="w-[150px] h-[45px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]">특징 및 효과</TableHead>
+                                <TableHead className="w-[70px] h-[45px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]">양쪽</TableHead>
                                 <TableHead className="w-[80px] h-[45px] text-center font-bold px-2 border-b-0 bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8]">상태</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isInitialLoading ? (
                                 <TableRow className="border-b-0">
-                                    <TableCell colSpan={8} className="h-24 text-center border-b-0">
+                                    <TableCell colSpan={9} className="h-24 text-center border-b-0">
                                         로딩 중...
                                     </TableCell>
                                 </TableRow>
                             ) : exercises.length === 0 ? (
                                 <TableRow className="border-b-0">
-                                    <TableCell colSpan={8} className="h-24 text-center border-b-0 text-muted-foreground">
+                                    <TableCell colSpan={9} className="h-24 text-center border-b-0 text-muted-foreground">
                                         검색 결과가 없습니다.
                                     </TableCell>
                                 </TableRow>
@@ -263,6 +270,14 @@ export const ExerciseList: React.FC<ExerciseListProps> = ({
                                                     {exercise.characteristics}
                                                 </TableCell>
                                                 <TableCell className={cn(
+                                                    "h-[35px] py-0 px-2 text-xs text-center border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors",
+                                                    isSelected && "bg-primary/20"
+                                                )}>
+                                                    <Badge variant={exercise.is_bilateral ? "default" : "outline"} className="h-5 text-[10px] px-1 pointer-events-none">
+                                                        {exercise.is_bilateral ? 'Y' : 'N'}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className={cn(
                                                     "h-[35px] py-0 px-2 text-xs text-center group-hover:text-inherit transition-colors",
                                                     isSelected && "bg-primary/20"
                                                 )}>
@@ -283,7 +298,7 @@ export const ExerciseList: React.FC<ExerciseListProps> = ({
 
                                     {isLoadingMore && (
                                         <TableRow className="border-b-0 hover:bg-transparent">
-                                            <TableCell colSpan={8} className="h-14 text-center border-b-0 text-muted-foreground">
+                                            <TableCell colSpan={9} className="h-14 text-center border-b-0 text-muted-foreground">
                                                 <span className="inline-flex items-center gap-2 text-xs">
                                                     <Loader2 className="h-4 w-4 animate-spin" />
                                                     불러오는 중...

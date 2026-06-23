@@ -1,11 +1,12 @@
 /**
- * WorkoutDetailTable — 운동 상세 정보 테이블 (위치/운동명/자극부위/특징/기구)
+ * WorkoutDetailTable — 운동 상세 정보 테이블 (위치/운동명/자극부위/특징/기구/양쪽)
  *
  * - 컬럼 너비 % 단위로 리사이즈 가능 (`useDetailColumnResize` 훅 사용)
  * - AMRAP/EMOM·stress/loop MAIN 카테고리는 "횟수" 컬럼 추가
+ * - 운동명(영문/한글) 클릭 시 `ExerciseVideoDialog`로 영상 모달 표시
  */
 
-import React from 'react'
+import React, { useCallback, useState } from 'react'
 import { Info } from 'lucide-react'
 import {
   Table as ShadcnTable,
@@ -15,8 +16,12 @@ import {
   TableHeader as ShadcnTableHeader,
   TableRow as ShadcnTableRow,
 } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { useSnackbar } from '@/contexts/SnackbarContext'
 import { showWorkoutDetailRepsColumn, isCD, isDS } from './monthProgramUtils'
+import { ExerciseVideoDialog } from './ExerciseVideoDialog'
+import { buildExerciseVideoEmbedUrl } from './monthProgramVideoUtils'
 import type { WorkoutDetail, WorkoutMaster } from './monthProgramTypes'
 
 interface WorkoutDetailTableProps {
@@ -31,8 +36,80 @@ interface WorkoutDetailTableProps {
   onColResizeStart: (colIndex: number) => (e: React.MouseEvent) => void
 }
 
-const HEADERS_WITH_REPS = ['위치', '횟수', '운동명(영문)', '운동명(한글)', '자극부위', '특징/효과', '기구'] as const
-const HEADERS_BASIC = ['위치', '운동명(영문)', '운동명(한글)', '자극부위', '특징/효과', '기구'] as const
+const HEADERS_WITH_REPS = ['위치', '횟수', '운동명(영문)', '운동명(한글)', '자극부위', '특징/효과', '기구', '양쪽'] as const
+const HEADERS_BASIC = ['위치', '운동명(영문)', '운동명(한글)', '자극부위', '특징/효과', '기구', '양쪽'] as const
+
+const formatBilateralLabel = (row: WorkoutDetail): string => {
+  if (isDS(row.major_category) || isCD(row.major_category)) return ''
+  return row.is_bilateral ? 'Y' : 'N'
+}
+
+const getExerciseDisplayName = (row: WorkoutDetail): string =>
+  row.name_ko || row.exerciseName || row.name_en || '운동'
+
+interface ExerciseNameCellProps {
+  label: string
+  row: WorkoutDetail
+  hasVideo: boolean
+  onOpenVideo: (row: WorkoutDetail) => void
+  className?: string
+}
+
+const ExerciseNameCell: React.FC<ExerciseNameCellProps> = ({
+  label,
+  row,
+  hasVideo,
+  onOpenVideo,
+  className,
+}) => {
+  const isClickable = label !== '-'
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (!isClickable) return
+    e.stopPropagation()
+    onOpenVideo(row)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isClickable) return
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    e.stopPropagation()
+    onOpenVideo(row)
+  }
+
+  const content = (
+    <button
+      type="button"
+      disabled={!isClickable}
+      aria-label={isClickable ? `${label} 영상 보기` : undefined}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      className={cn(
+        'truncate block w-full text-left bg-transparent border-0 p-0 text-inherit font-inherit',
+        isClickable && 'cursor-pointer underline-offset-2 hover:underline',
+        hasVideo && 'text-blue-600 dark:text-blue-400',
+        !isClickable && 'cursor-default',
+        className,
+      )}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {content}
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="max-w-xs">
+          {isClickable ? (hasVideo ? `${label} (클릭하여 영상 보기)` : `${label} (영상 확인)`) : label}
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
   selectedMaster,
@@ -45,6 +122,23 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
   resizingDetailColIndex,
   onColResizeStart,
 }) => {
+  const { showSnackbar } = useSnackbar()
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false)
+  const [videoTarget, setVideoTarget] = useState<WorkoutDetail | null>(null)
+
+  const handleOpenExerciseVideo = useCallback(
+    (row: WorkoutDetail) => {
+      const embedUrl = buildExerciseVideoEmbedUrl(row.video_url, row.video_start_time)
+      if (!embedUrl) {
+        showSnackbar({ message: '등록된 운동 영상이 없습니다.', severity: 'warning' })
+        return
+      }
+      setVideoTarget(row)
+      setVideoDialogOpen(true)
+    },
+    [showSnackbar],
+  )
+
   const showRepsColumn = showWorkoutDetailRepsColumn(
     selectedMaster?.workoutCategoriesId,
     selectedMaster?.workoutCategory,
@@ -55,7 +149,8 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
   const colWidths = showRepsColumn ? detailTableColumnWidthsWithReps : detailTableColumnWidths
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <TooltipProvider>
+      <div className="flex-1 min-h-0 flex flex-col">
       <div className="flex items-center gap-2 flex-shrink-0 px-3 py-2 border-b border-[#343637] dark:border-[#6b7280] bg-muted/20">
         <Info className="w-4 h-4 text-primary" />
         <span className="text-xs font-bold">운동 상세 정보 ({workoutDetails.length}개)</span>
@@ -102,6 +197,9 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
             {workoutDetails.length > 0 ? (
               workoutDetails.map((row, idx) => {
                 const showReps = showRepsColumn && !isDS(row.major_category) && !isCD(row.major_category)
+                const hasVideo = !!buildExerciseVideoEmbedUrl(row.video_url, row.video_start_time)
+                const nameEn = row.name_en || '-'
+                const nameKo = row.name_ko || row.exerciseName || '-'
                 return (
                   <ShadcnTableRow
                     key={row.id}
@@ -120,10 +218,20 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
                       </ShadcnTableCell>
                     )}
                     <ShadcnTableCell className="h-[35px] py-0 px-2 text-xs border-r border-[#343637] dark:border-[#6b7280] truncate group-hover:text-inherit transition-colors">
-                      {row.name_en || '-'}
+                      <ExerciseNameCell
+                        label={nameEn}
+                        row={row}
+                        hasVideo={hasVideo}
+                        onOpenVideo={handleOpenExerciseVideo}
+                      />
                     </ShadcnTableCell>
-                    <ShadcnTableCell className="h-[35px] py-0 px-2 text-xs border-r border-[#343637] dark:border-[#6b7280] truncate text-blue-600 dark:text-blue-400 font-medium group-hover:text-inherit transition-colors">
-                      {row.name_ko || row.exerciseName || '-'}
+                    <ShadcnTableCell className="h-[35px] py-0 px-2 text-xs border-r border-[#343637] dark:border-[#6b7280] truncate font-medium group-hover:text-inherit transition-colors">
+                      <ExerciseNameCell
+                        label={nameKo}
+                        row={row}
+                        hasVideo={hasVideo}
+                        onOpenVideo={handleOpenExerciseVideo}
+                      />
                     </ShadcnTableCell>
                     <ShadcnTableCell className="text-center h-[35px] py-0 px-2 text-xs border-r border-[#343637] dark:border-[#6b7280] truncate group-hover:text-inherit transition-colors">
                       {row.targetMuscle || '-'}
@@ -131,8 +239,11 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
                     <ShadcnTableCell className="h-[35px] py-0 px-2 text-xs border-r border-[#343637] dark:border-[#6b7280] truncate group-hover:text-inherit transition-colors">
                       {row.characteristics || '-'}
                     </ShadcnTableCell>
-                    <ShadcnTableCell className="text-center h-[35px] py-0 px-2 text-xs truncate group-hover:text-inherit transition-colors">
+                    <ShadcnTableCell className="text-center h-[35px] py-0 px-2 text-xs border-r border-[#343637] dark:border-[#6b7280] truncate group-hover:text-inherit transition-colors">
                       {row.equipment || '-'}
+                    </ShadcnTableCell>
+                    <ShadcnTableCell className="text-center h-[35px] py-0 px-2 text-xs truncate group-hover:text-inherit transition-colors">
+                      {formatBilateralLabel(row)}
                     </ShadcnTableCell>
                   </ShadcnTableRow>
                 )
@@ -150,6 +261,15 @@ export const WorkoutDetailTable: React.FC<WorkoutDetailTableProps> = ({
           </ShadcnTableBody>
         </ShadcnTable>
       </div>
+
+      <ExerciseVideoDialog
+        open={videoDialogOpen}
+        onOpenChange={setVideoDialogOpen}
+        exerciseName={videoTarget ? getExerciseDisplayName(videoTarget) : ''}
+        videoUrl={videoTarget?.video_url}
+        videoStartTime={videoTarget?.video_start_time}
+      />
     </div>
+    </TooltipProvider>
   )
 }

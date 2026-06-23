@@ -94,6 +94,7 @@ router.get('/users',
       const limit = parseInt(req.query.limit as string) || 20
       const search = req.query.search as string
       const role = req.query.role as string
+      const branchId = req.query.branchId as string
 
       const offset = (page - 1) * limit
       let whereConditions: string[] = []
@@ -110,13 +111,18 @@ router.get('/users',
       }
 
       if (isBranchAdmin(req)) {
-        const branchId = getRequestBranchId(req)
-        if (!branchId) {
+        const scopedBranchId = getRequestBranchId(req)
+        if (!scopedBranchId) {
           return res.status(400).json({
             success: false,
             error: '소속 지점 정보가 없습니다'
           })
         }
+        whereConditions.push('u.branch_id = ?')
+        params.push(scopedBranchId)
+      } else if (branchId === 'none') {
+        whereConditions.push('u.branch_id IS NULL')
+      } else if (branchId && branchId !== 'all') {
         whereConditions.push('u.branch_id = ?')
         params.push(branchId)
       }
@@ -1784,6 +1790,7 @@ router.get('/content/exercises',
           e.characteristics,
           e.equipment,
           e.purpose,
+          e.is_bilateral,
           e.is_active,
           e.created_at,
           e.updated_at,
@@ -1836,7 +1843,8 @@ router.post('/content/exercises',
         targetMuscles,
         characteristics,
         equipment,
-        purpose
+        purpose,
+        isBilateral
       } = req.body
 
       // 필수 필드 검증
@@ -1876,8 +1884,8 @@ router.post('/content/exercises',
       // 운동정보 생성
       const result = await executeQuery(`
         INSERT INTO exercises 
-        (number, workout_category_id, level, name_en, name_ko, target_muscles, characteristics, equipment, purpose)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (number, workout_category_id, level, name_en, name_ko, target_muscles, characteristics, equipment, purpose, is_bilateral)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         number,
         workoutCategoryId,
@@ -1887,7 +1895,8 @@ router.post('/content/exercises',
         targetMuscles,
         characteristics,
         equipment,
-        purpose
+        purpose,
+        !!isBilateral
       ])
 
       res.status(201).json({
@@ -1929,6 +1938,7 @@ router.patch('/content/exercises/:id',
         characteristics,
         equipment,
         purpose,
+        isBilateral,
         isActive
       } = req.body
 
@@ -1982,6 +1992,11 @@ router.patch('/content/exercises/:id',
       if (purpose) {
         updateFields.push('purpose = ?')
         updateValues.push(purpose)
+      }
+
+      if (typeof isBilateral === 'boolean') {
+        updateFields.push('is_bilateral = ?')
+        updateValues.push(isBilateral)
       }
 
       if (typeof isActive === 'boolean') {

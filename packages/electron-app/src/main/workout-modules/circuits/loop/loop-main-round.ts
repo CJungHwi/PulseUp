@@ -134,7 +134,7 @@ export const runLoopMainRound = (
         log(`🔄 [LoopModule] 운동 위치: ${seq.position}`)
       }
 
-      const lapIndex = computeLoopLapIndex(seq.position, currentRound)
+      const lapIndex = computeLoopLapIndex(roundExercises, seq)
       if (!isFiveScreenMode) {
         preloadLoopFromTimeline(ctx, sequenceIndex)
       }
@@ -154,7 +154,8 @@ export const runLoopMainRound = (
         totalLaps: 6,
       })
     } else {
-      const lapIndex = computeLoopLapIndex(currentExercisePosition || seq.position, currentRound)
+      const currentExercise = roundExercises.find((exercise) => exercise.position === currentExercisePosition)
+      const lapIndex = computeLoopLapIndex(roundExercises, currentExercise || seq)
       log(
         `[LoopModule] ${seq.exercise_type === 'rest' ? '휴식' : '물보충'} - SET ${roundSetNumber}/${totalSets}, LAP ${lapIndex}/6`,
       )

@@ -101,6 +101,7 @@ const normalizeDetail = (item: any, index: number): WorkoutDetail => ({
   time: item.duration || item.time || 0,
   position: item.position || '',
   reps: item.reps != null ? item.reps : undefined,
+  is_bilateral: !!(item.is_bilateral ?? item.isBilateral ?? item.exercise_is_bilateral),
 })
 
 export interface FetchDetailResult {
@@ -188,6 +189,7 @@ const normalizeSequence = (
     exercise_name: displayName,
     duration: item.duration || 0,
     reps: item.reps !== null && item.reps !== undefined ? item.reps : null,
+    is_bilateral: !!(item.is_bilateral ?? item.isBilateral ?? item.exercise_is_bilateral),
     position: item.position || null,
     name_ko: item.name_ko || null,
     name_en: item.name_en || null,

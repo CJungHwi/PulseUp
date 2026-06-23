@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS workout_exercises (
     exercise_id VARCHAR(255) NULL COMMENT '운동 ID (exercise_type이 exercise일 때만 사용)',
     exercise_name VARCHAR(255) NOT NULL COMMENT '운동명 또는 활동명 (운동명, 휴식, 물보충)',
     duration INT NOT NULL COMMENT '지속 시간 (초 단위)',
+    is_bilateral BOOLEAN NOT NULL DEFAULT FALSE COMMENT '양쪽운동 여부 (exercise_type이 exercise일 때 사용)',
     position VARCHAR(10) NULL COMMENT '운동 위치 (A1~A6, B1~B6 등, exercise_type이 exercise일 때만 사용)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',

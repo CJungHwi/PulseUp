@@ -82,9 +82,10 @@ CREATE TABLE exercises (
     thumbnail_url VARCHAR(500) NULL COMMENT '썸네일 이미지 URL (로컬 저장 경로)',
     video_title VARCHAR(255) NULL COMMENT '영상 제목',
     video_duration INT NULL COMMENT '영상 재생시간 (초 단위)',
-    video_start_time INT NULL COMMENT '영상 시작 시간 (초 단위)';
-    video_end_time INT NULL COMMENT '영상 종료 시간 (초 단위)';
-    video_loop_count INT NULL COMMENT '반복 횟수 (NULL이면 무한반복)';
+    video_start_time INT NULL COMMENT '영상 시작 시간 (초 단위)',
+    video_end_time INT NULL COMMENT '영상 종료 시간 (초 단위)',
+    video_loop_count INT NULL COMMENT '반복 횟수 (NULL이면 무한반복)',
+    is_bilateral BOOLEAN NOT NULL DEFAULT FALSE COMMENT '양쪽운동 여부 (TRUE: 양쪽, FALSE: 단일)',
     is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT '사용 가능 여부 (true: 활성, false: 비활성)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',
@@ -152,11 +153,13 @@ CREATE TABLE heart_rate_data (
     id CHAR(36) PRIMARY KEY DEFAULT (UUID()) COMMENT '심박수 데이터 고유 ID',
     user_id CHAR(36) NOT NULL COMMENT '사용자 ID (users.id 참조)',
     workout_history_master_id CHAR(36) NOT NULL COMMENT '운동기록 마스터 ID (workout_history_master.id 참조)',
-    device_id CHAR(36) NOT NULL COMMENT '블루투스 기기 ID (branch_bluetooth_devices.id 참조)',
+    device_id VARCHAR(255) NOT NULL COMMENT '기기 ID - BLE/ANT+ 공통 식별자 (예: ant-10771)',
+    device_name VARCHAR(255) NULL COMMENT '기기 이름 - ANT+ 표시명 또는 등록명 (예: HR-10771)',
     timestamp TIMESTAMP NOT NULL COMMENT '측정 시간',
     heart_rate INT NOT NULL COMMENT '측정된 심박수 값 (bpm)',
     zone ENUM('rest', 'fat-burn', 'cardio', 'peak') NULL COMMENT '심박수 운동 구간 - rest: 휴식, fat-burn: 지방연소, cardio: 유산소, peak: 최대강도',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '데이터 생성일시',
+    UNIQUE KEY idx_unique_heart_rate (user_id, workout_history_master_id, device_id, timestamp),
     INDEX idx_user_id (user_id),
     INDEX idx_workout_history_master_id (workout_history_master_id),
     INDEX idx_device_id (device_id),
@@ -165,6 +168,28 @@ CREATE TABLE heart_rate_data (
     INDEX idx_zone (zone),
     INDEX idx_timestamp (timestamp)
 ) ENGINE=InnoDB COMMENT='심박수 상세 데이터 - 사용자별 운동세션별 실시간 심박수 측정값';
+
+-- 16-1. 운동 세션별 심박계 참가자 매핑 테이블
+CREATE TABLE workout_heart_rate_participants (
+    id CHAR(36) PRIMARY KEY DEFAULT (UUID()) COMMENT '심박 참가자 매핑 고유 ID',
+    workout_history_master_id CHAR(36) NOT NULL COMMENT '운동기록 마스터 ID (workout_history_master.id 참조)',
+    user_id CHAR(36) NOT NULL COMMENT '참가 회원 ID (users.id 참조)',
+    device_id VARCHAR(255) NOT NULL COMMENT '할당된 심박계 ID - heart_rate_data.device_id와 동일 형식',
+    device_name VARCHAR(255) NULL COMMENT '할당된 심박계 표시명',
+    slot_number INT NULL COMMENT 'Electron ANT+ 슬롯 번호',
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '심박계 배정 일시',
+    unassigned_at TIMESTAMP NULL COMMENT '배정 해제 일시',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT '현재 활성 배정 여부',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',
+    INDEX idx_workout_user_active (workout_history_master_id, user_id, is_active),
+    INDEX idx_workout_device_active (workout_history_master_id, device_id, is_active),
+    INDEX idx_workout_master (workout_history_master_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_device_id (device_id),
+    INDEX idx_slot_number (slot_number),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB COMMENT='운동 세션별 회원-심박계 매핑 - 그룹 수업 개인별 심박 저장 기준';
 
 -- 14. 심박수 측정 데이터 테이블 (삭제됨 - heart_rate_data로 통합)
 -- CREATE TABLE heart_rate_readings (
@@ -371,6 +396,7 @@ CREATE TABLE `workout_history_detail` (
   `method_rest` int(11) DEFAULT 0 COMMENT '휴식시간',
   `method_hydration_time` int(11) DEFAULT 0 COMMENT '물 섭취 시간',
   `duration` int(11) NOT NULL COMMENT '총 운동시간 (초 단위)',
+  `is_bilateral` tinyint(1) NOT NULL DEFAULT 0 COMMENT '운동 구성 내 양쪽운동 여부',
   `calories_burned` int(11) DEFAULT NULL COMMENT '소모 칼로리 (kcal)',
   `average_heart_rate` int(11) DEFAULT NULL COMMENT '평균 심박수 (bpm)',
   `max_heart_rate` int(11) DEFAULT NULL COMMENT '최대 심박수 (bpm)',

@@ -8,6 +8,7 @@ export interface HeartRateReading {
   timestamp: Date
   heartRate: number
   zone?: string
+  slotNumber?: number | null
 }
 
 /** HeartRateManager가 IPCHandlers에 의존하는 최소 인터페이스 */

@@ -1,11 +1,15 @@
 import type { RendererContext, SequenceRenderer } from './base-renderer.js'
 import { log } from './base-renderer.js'
-import { isLeftMonitorDisplay } from '../renderer-display-types.js'
-import {
-  GRID_FIRST_HALF_PREFIX,
-  GRID_SECOND_HALF_PREFIX,
-  parseGridPosition,
-} from '../../common/grid-position-codes.js'
+import { displayTypeToFivePanel, isLeftMonitorDisplay } from '../renderer-display-types.js'
+import { mapMainPositionToDisplayLabel } from '../five-screen-seek-label.js'
+
+const getFiveScreenGroupPrefix = (panel: ReturnType<typeof displayTypeToFivePanel>): string | null => {
+  if (panel === 'L1') return 'A'
+  if (panel === 'L2') return 'B'
+  if (panel === 'R1') return 'C'
+  if (panel === 'R2') return 'D'
+  return null
+}
 
 export class MainRenderer implements SequenceRenderer {
   canHandle(_data: any): boolean {
@@ -66,10 +70,12 @@ export class MainRenderer implements SequenceRenderer {
       ctx.workoutGridDisplay.resumeAllVideos()
 
       if (sequence.exercise_type === 'exercise') {
-        const halfPrefix =
-          ctx.currentActiveSet === 'set1' ? GRID_FIRST_HALF_PREFIX : GRID_SECOND_HALF_PREFIX
-        const nums = isLeftMonitor ? [1, 2, 3] : [4, 5, 6]
-        const positions = nums.map((n) => `${halfPrefix}${n}`)
+        const groupPrefix = ctx.usesFiveScreenPanelQueue
+          ? getFiveScreenGroupPrefix(displayTypeToFivePanel(ctx.currentDisplay))
+          : ctx.currentActiveSet === 'set1'
+            ? (isLeftMonitor ? 'A' : 'C')
+            : (isLeftMonitor ? 'B' : 'D')
+        const positions = groupPrefix ? [1, 2, 3].map((n) => `${groupPrefix}${n}`) : []
 
         const skipPlay = ctx.hasCountdownPreview
         if (skipPlay) ctx.setHasCountdownPreview(false)
@@ -83,17 +89,17 @@ export class MainRenderer implements SequenceRenderer {
       ctx.workoutGridDisplay.hideArrowOverlay()
       ctx.workoutGridDisplay.resumeAllVideos()
 
-      const parsed = parseGridPosition(position)
-      const isLeftPosition = parsed?.side === 'left'
-      const isRightPosition = parsed?.side === 'right'
+      const displayPosition = mapMainPositionToDisplayLabel(ctx.currentDisplay, position, {
+        fiveScreen: ctx.usesFiveScreenPanelQueue,
+      })
 
-      if ((isLeftMonitor && isLeftPosition) || (!isLeftMonitor && isRightPosition)) {
+      if (displayPosition) {
         if (sequence.exercise_type === 'exercise') {
           const skipPlay = ctx.hasCountdownPreview
           if (skipPlay) ctx.setHasCountdownPreview(false)
-          ctx.workoutGridDisplay.playVideo(sequence, position, syncStartAtMs, skipPlay)
+          ctx.workoutGridDisplay.playVideo(sequence, displayPosition, syncStartAtMs, skipPlay)
         } else {
-          ctx.workoutGridDisplay.clearVideoByPosition(position)
+          ctx.workoutGridDisplay.clearVideoByPosition(displayPosition)
         }
       }
     }

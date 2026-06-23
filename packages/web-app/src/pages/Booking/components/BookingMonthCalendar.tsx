@@ -7,7 +7,7 @@
  *
  * 관련 컴포넌트: shadcn `Card`, `Input`, `Badge`.
  *
- * 흐름: 월 선택 → 날짜별 슬롯/예약 그룹핑 → 날짜/슬롯/예약 클릭 이벤트 전달.
+ * 흐름: 월 선택 → 날짜별 슬롯/예약 그룹핑 → 일별 다건 표시(스크롤) → 날짜/슬롯/예약 클릭 이벤트 전달.
  */
 
 import React, { useMemo } from 'react'
@@ -145,6 +145,10 @@ export const BookingMonthCalendar: React.FC<BookingMonthCalendarProps> = ({
               const daySlots = slotsByDate[day.key] || []
               const dayBookings = bookingsByDate[day.key] || []
               const isClickable = Boolean(onDayClick)
+              const daySummary = [
+                daySlots.length > 0 ? `수업 ${daySlots.length}` : '',
+                dayBookings.length > 0 ? `예약 ${dayBookings.length}` : '',
+              ].filter(Boolean).join(' · ')
 
               return (
                 <div
@@ -155,24 +159,29 @@ export const BookingMonthCalendar: React.FC<BookingMonthCalendarProps> = ({
                   onClick={isClickable ? () => onDayClick?.(day.date) : undefined}
                   onKeyDown={isClickable ? (event) => handleDayKeyDown(event, day.date) : undefined}
                   className={cn(
-                    'min-h-[148px] p-2 border-t border-[#343637] dark:border-[#6b7280] outline-none transition-colors',
+                    'min-h-[148px] p-2 border-t border-[#343637] dark:border-[#6b7280] outline-none transition-colors flex flex-col',
                     index % 7 !== 6 && 'border-r border-[#343637] dark:border-[#6b7280]',
                     day.isCurrentMonth ? 'bg-[#f9fafb] dark:bg-[#1d1d1d]' : 'bg-muted/30 text-muted-foreground',
                     isClickable && 'cursor-pointer hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset'
                   )}
                 >
-                  <div className="mb-1.5 flex items-center justify-between">
+                  <div className="mb-1.5 flex items-center justify-between gap-1">
                     <span className={cn('text-xs', day.isToday ? 'font-bold text-primary' : 'font-medium')}>
                       {day.dayOfMonth}
                     </span>
-                    {day.isToday ? (
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-primary text-primary">
-                        오늘
-                      </Badge>
-                    ) : null}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {daySummary ? (
+                        <span className="text-[10px] text-muted-foreground">{daySummary}</span>
+                      ) : null}
+                      {day.isToday ? (
+                        <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-primary text-primary">
+                          오늘
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-[3px]">
+                  <div className="flex-1 min-h-0 flex flex-col gap-[3px] overflow-y-auto scrollbar-hide max-h-[180px]">
                     {daySlots.map((slot) => {
                       const badge = getSlotBadge?.(slot)
                       const remaining = getRemainingCapacity(slot)

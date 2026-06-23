@@ -2,7 +2,6 @@ import type { RendererContext, SequenceRenderer } from './base-renderer.js'
 import { log } from './base-renderer.js'
 import { isLeftMonitorDisplay, isWorkoutGridDisplayType } from '../renderer-display-types.js'
 import { mapMainPositionToDisplayLabel } from '../five-screen-seek-label.js'
-import { parseGridPosition } from '../../common/grid-position-codes.js'
 
 export class ReadyRenderer implements SequenceRenderer {
   canHandle(data: any): boolean {
@@ -38,15 +37,6 @@ export class ReadyRenderer implements SequenceRenderer {
       previewSequences.forEach((seq: any) => {
         const pos = seq.position
         if (!pos) return
-
-        const parsed = parseGridPosition(pos)
-        if (parsed) {
-          if ((isLeftMonitor && parsed.side !== 'left') || (!isLeftMonitor && parsed.side !== 'right')) {
-            return
-          }
-        } else {
-          return
-        }
 
         const displayPos = mapMainPositionToDisplayLabel(ctx.currentDisplay, pos, {
           fiveScreen: ctx.usesFiveScreenPanelQueue,

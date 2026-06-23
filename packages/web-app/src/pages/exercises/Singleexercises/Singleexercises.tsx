@@ -115,7 +115,7 @@ export default function Singleexercises() {
 
   useEffect(() => {
     if (scopeLoading || isScopeActive) return
-    toast.warning(`${workoutScopeCode} scope가 비활성화되어 있습니다. 저장이 제한될 수 있습니다.`)
+    toast.warning(`${workoutScopeCode} 운동저장구분이 비활성화되어 있습니다. 저장이 제한될 수 있습니다.`)
   }, [scopeLoading, isScopeActive, workoutScopeCode, toast])
 
   // --- Left Panel State (History) ---

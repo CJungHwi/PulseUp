@@ -42,7 +42,7 @@ export const resolveEmomStepDurationSec = (storedSeconds: number): number => {
 
 /**
  * EMOM 메인 순서 — Loop/Stress와 동일
- * 전반전: A1→A2→A3→B3→B2→B1, 후반전: A4→A5→A6→B6→B5→B4
+ * 전반전: A1→A2→A3→B3→B2→B1, 후반전: C1→C2→C3→D3→D2→D1
  */
 export const EMOM_LAP_ORDER = STRESS_LAP_ORDER
 
@@ -90,7 +90,7 @@ export const computeEmomLapIndex = (position: string | undefined): number => {
   const idx = EMOM_LAP_ORDER.indexOf(normalized)
   const lapIndexRaw = idx >= 0 ? idx + 1 : 1
   const parsed = parseGridPosition(normalized)
-  const isSecondHalf = parsed?.prefix === 'B'
+  const isSecondHalf = parsed?.set === 'set2'
   return isSecondHalf ? ((lapIndexRaw - 1) % 6) + 1 : lapIndexRaw <= 6 ? lapIndexRaw : 1
 }
 

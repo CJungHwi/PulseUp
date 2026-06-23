@@ -1,7 +1,7 @@
 /**
  * AuthPageShell — 인증 페이지 공통 레이아웃
  *
- * 기능: 로그인/회원가입 화면의 전체 배경, 중앙 정렬, 브랜드 로고 영역, 우측 상단 액션 영역을 제공한다.
+ * 기능: 로그인/회원가입 화면의 전체 배경, 중앙 정렬, 테마별 브랜드 로고 영역, 우측 상단 액션 영역을 제공한다.
  *
  * 사용처: `Login.tsx`, `Register.tsx`
  */
@@ -9,12 +9,14 @@ import React from 'react'
 
 interface AuthPageShellProps {
   children: React.ReactNode
+  logoSrc: string
   logoMaxWidth?: string
   topRightAction?: React.ReactNode
 }
 
 export const AuthPageShell: React.FC<AuthPageShellProps> = ({
   children,
+  logoSrc,
   logoMaxWidth = '320px',
   topRightAction,
 }) => (
@@ -30,8 +32,8 @@ export const AuthPageShell: React.FC<AuthPageShellProps> = ({
         <div className="text-center mb-8 animate-in fade-in duration-700">
           <div className="flex justify-center items-center mb-3 bg-background rounded-lg p-2">
             <img
-              src="/pulse-up-auth-logo.png"
-              alt="PULSE-UP"
+              src={logoSrc}
+              alt="PULSE"
               className="w-full h-auto block"
               style={{ maxWidth: logoMaxWidth }}
             />

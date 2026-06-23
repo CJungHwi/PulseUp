@@ -1,3 +1,13 @@
+/**
+ * 소스 요약 — EMOM(Loop) 운동 모듈
+ *
+ * 기능: EMOM(method=loop) 운동의 전체 재생 흐름을 담당하는 독립 모듈. EMOM-Stress는 별도
+ *       `EmomStressModule`로 분리되어 circuit-registry에서 'emom-stress' 타입으로 선택된다.
+ * 호출 프로시저: 없음(Electron 재생 모듈, API에서 받은 workout_exercises 세션 사용).
+ * 관련 components/modules: `circuit-registry.ts`(선택), `emom-main-round.ts`(메인 재생),
+ *       `../shared/stretching-module.ts`, `../shared/ready-module.ts`.
+ * 흐름: 스트레칭(Round 0/99) → countdown(Ready) → 메인 라운드는 EMOM-Loop runner로 재생.
+ */
 import type { WorkoutModuleContext, WorkoutModule } from '../shared/base-module'
 import { log } from '../shared/base-module'
 import { StretchingModule } from '../shared/stretching-module'
@@ -82,11 +92,16 @@ export class EmomModule implements WorkoutModule {
       return
     }
 
-    runEmomMainRound(ctx, {
-      stopped: () => this.stopped,
-      preloadManager: this.preloadManager,
-      executeNext: () => this.executeNext(ctx, onComplete),
-    }, currentIndex, currentRound)
+    runEmomMainRound(
+      ctx,
+      {
+        stopped: () => this.stopped,
+        preloadManager: this.preloadManager,
+        executeNext: () => this.executeNext(ctx, onComplete),
+      },
+      currentIndex,
+      currentRound,
+    )
   }
 
   private handleStretchingRound(

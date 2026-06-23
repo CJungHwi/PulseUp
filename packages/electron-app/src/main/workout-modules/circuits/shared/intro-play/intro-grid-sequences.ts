@@ -1,5 +1,5 @@
 /**
- * 인트로 영상 그리드: 좌측 모니터 A1–A6, 우측 모니터 B1–B6 (각 2열: num 1–3 / 4–6)
+ * 인트로 영상 그리드: 3모니터 좌 A/B·우 C/D, 5모니터 좌부터 A/B/C/D
  */
 import type { IntroCircuitKind, IntroSequenceCollectContext } from '../intro-circuit'
 import { sortEmomDisplaySequences } from '../../emom/emom-constants'
@@ -66,7 +66,7 @@ export const composeHalfLapMainPreviewOrdered = (
   return [...half0, ...half1]
 }
 
-/** 첫 메인 라운드 L1–R6를 랩 순으로 정렬해 인트로 IPC에 넘길 목록 (Stress / AMRAP) */
+/** 첫 메인 라운드 A1–D3를 랩 순으로 정렬해 인트로 IPC에 넘길 목록 (Stress / AMRAP) */
 export const collectFirstMainSortedIntroGridSequences = <
   T extends { round: number | string; position?: string },
 >(

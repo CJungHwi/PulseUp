@@ -330,7 +330,7 @@ export const cancelIntro = async (deviceId: string): Promise<{ success?: boolean
   return sendDeviceCommand(deviceId, 'cancel-intro', {})
 }
 
-/** 인트로 선택보기 — A/B/C + 번호로 하단 확대 재생 */
+/** 인트로 선택보기 — A/B/C/D + 번호로 하단 확대 재생 */
 export const sendIntroFocus = async (
   deviceId: string,
   payload: { zone: string; number: number; positionCode?: string },

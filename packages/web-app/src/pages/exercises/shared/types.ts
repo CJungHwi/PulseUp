@@ -34,6 +34,7 @@ export interface WorkoutDetail {
     video_start_time?: number
     video_end_time?: number
     video_loop_count?: number
+    is_bilateral?: boolean
     major_category?: string
     major_category_name?: string
     is_active?: boolean
@@ -58,6 +59,7 @@ export interface Exercise {
     video_start_time?: number
     video_end_time?: number
     video_loop_count?: number
+    is_bilateral?: boolean
     is_active?: boolean
     major_category: string
     major_category_name?: string
@@ -74,6 +76,8 @@ export interface PanelRow {
     rest: number
     waterBreak: number
     type: string
+    /** COMBO 운동 슬롯별 기본 반복 횟수 */
+    reps?: number
     selectedExercise?: Exercise
 }
 

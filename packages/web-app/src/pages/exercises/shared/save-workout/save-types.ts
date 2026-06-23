@@ -37,6 +37,7 @@ export interface WorkoutExerciseItem {
     name: string
     duration: number
     reps?: number
+    is_bilateral?: boolean
     position: string | null
 }
 

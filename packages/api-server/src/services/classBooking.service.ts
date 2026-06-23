@@ -44,6 +44,43 @@ const assertFutureDate = (value: string | Date, message: string) => {
   }
 }
 
+const assertValidSlotRange = (startAt: string, endAt: string) => {
+  if (new Date(startAt).getTime() >= new Date(endAt).getTime()) {
+    throw new Error('종료 시간은 시작 시간보다 늦어야 합니다')
+  }
+}
+
+const assertNoOverlappingSlot = async (
+  branchId: string | number,
+  startAt: string,
+  endAt: string,
+  excludeSlotId?: string
+) => {
+  const values: Array<string | number> = [branchId, endAt, startAt]
+  let excludeClause = ''
+
+  if (excludeSlotId) {
+    excludeClause = 'AND id <> ?'
+    values.push(excludeSlotId)
+  }
+
+  const rows = await executeQuery(
+    `SELECT id, title, start_at, end_at
+     FROM class_slots
+     WHERE branch_id = ?
+       AND is_active = TRUE
+       AND start_at < ?
+       AND end_at > ?
+       ${excludeClause}
+     LIMIT 1`,
+    values
+  )
+
+  if (rows?.[0]) {
+    throw new Error('같은 시간대에 이미 등록된 수업이 있습니다')
+  }
+}
+
 export class ClassBookingService {
   static async listSlots(params: { branchId: string | number; start?: string; end?: string }) {
     const where = ['cs.branch_id = ?', 'cs.is_active = TRUE']
@@ -79,6 +116,8 @@ export class ClassBookingService {
     const licensed = await LicenseService.hasLicense(input.branchId, input.workoutCategoryId)
     if (!licensed) throw new Error('라이선스가 없는 운동 대분류는 수업으로 등록할 수 없습니다')
     assertFutureDate(input.startAt, '지난 시간에는 수업을 등록할 수 없습니다')
+    assertValidSlotRange(input.startAt, input.endAt)
+    await assertNoOverlappingSlot(input.branchId, input.startAt, input.endAt)
 
     const slotId = randomUUID()
     await executeQuery(`
@@ -146,10 +185,9 @@ export class ClassBookingService {
     const nextCapacity = Number(input.capacity ?? slot.capacity)
     const reservedCount = Number(slot.reserved_count || 0)
 
-    if (new Date(nextStartAt).getTime() >= new Date(nextEndAt).getTime()) {
-      throw new Error('종료 시간은 시작 시간보다 늦어야 합니다')
-    }
+    assertValidSlotRange(nextStartAt, nextEndAt)
     assertFutureDate(nextStartAt, '지난 시간으로 수업을 수정할 수 없습니다')
+    await assertNoOverlappingSlot(input.branchId, nextStartAt, nextEndAt, slotId)
     if (nextCapacity < reservedCount) {
       throw new Error('예약 인원보다 적은 정원으로 수정할 수 없습니다')
     }

@@ -7,7 +7,7 @@
  * - `authService.login` → `services/auth.service.ts` 경유 API 로그인(예: `POST /auth/login`).
  *
  * 관련 컴포넌트(`./components/`):
- * - `AuthPageShell`: 인증 화면 공통 레이아웃/브랜드 영역
+ * - `AuthPageShell`: 인증 화면 공통 레이아웃/브랜드 영역 (테마별 PULSE 로고)
  * - `ThemeToggleButton`: 테마 전환 버튼
  * - `LoginForm`: 로그인 입력 폼
  *
@@ -21,6 +21,7 @@ import { useAppDispatch, useAppSelector } from '../../hooks/redux'
 import { authService } from '../../services/auth.service'
 import { loginSuccess } from '../../store/slices/authSlice'
 import { resolvePostLoginPath } from '../../utils/roleDefaultRoutes'
+import { getPulseBrandLogoSrc } from './components/authBrandAssets'
 import { AuthPageShell } from './components/AuthPageShell'
 import { LoginForm, type LoginFormState } from './components/LoginForm'
 import { ThemeToggleButton } from './components/ThemeToggleButton'
@@ -120,7 +121,10 @@ export const Login: React.FC = () => {
   }
 
   return (
-    <AuthPageShell topRightAction={<ThemeToggleButton mode={mode} onToggle={toggleTheme} />}>
+    <AuthPageShell
+      logoSrc={getPulseBrandLogoSrc(mode)}
+      topRightAction={<ThemeToggleButton mode={mode} onToggle={toggleTheme} />}
+    >
       <LoginForm
         formData={formData}
         error={error}

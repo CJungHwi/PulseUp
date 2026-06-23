@@ -3,7 +3,7 @@
 -- Description: Vimeo 영상 정보를 저장하거나 업데이트
 --              vimeo_videos insert/update 시 exercises 테이블 자동 동기화
 --              - number = video_id, name_en = title
---              - description 4필드: 신규는 "$" 구분, 기존 "/" 데이터는 "/"로 자동 분기
+--              - description 5필드: 운동명$자극부위$특징$기구$Y/N, 기존 "/" 데이터는 "/"로 자동 분기
 --              - status = 'available' → is_active = 1
 -- =============================================
 
@@ -28,6 +28,8 @@ BEGIN
     DECLARE v_target_muscles TEXT DEFAULT '';
     DECLARE v_characteristics TEXT DEFAULT '';
     DECLARE v_equipment VARCHAR(255) DEFAULT '';
+    DECLARE v_is_bilateral TINYINT(1) DEFAULT 0;
+    DECLARE v_bilateral_token VARCHAR(10) DEFAULT 'N';
     DECLARE v_is_active TINYINT(1) DEFAULT 1;
     DECLARE v_desc_padded TEXT;
     DECLARE v_sep VARCHAR(1) DEFAULT '$';
@@ -49,15 +51,17 @@ BEGIN
     -- description 파싱: 문자열에 '$'가 있으면 $ 구분, 아니면 기존 '/' 구분 (혼합 시 $ 우선)
     IF LOCATE('$', COALESCE(p_description, '')) > 0 THEN
         SET v_sep = '$';
-        SET v_desc_padded = CONCAT(COALESCE(p_description, ''), '$$$');
+        SET v_desc_padded = CONCAT(COALESCE(p_description, ''), '$$$$');
     ELSE
         SET v_sep = '/';
-        SET v_desc_padded = CONCAT(COALESCE(p_description, ''), '///');
+        SET v_desc_padded = CONCAT(COALESCE(p_description, ''), '////');
     END IF;
     SET v_name_ko = TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(v_desc_padded, v_sep, 1), v_sep, -1));
     SET v_target_muscles = TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(v_desc_padded, v_sep, 2), v_sep, -1));
     SET v_characteristics = TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(v_desc_padded, v_sep, 3), v_sep, -1));
     SET v_equipment = TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(v_desc_padded, v_sep, 4), v_sep, -1));
+    SET v_bilateral_token = UPPER(TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(v_desc_padded, v_sep, 5), v_sep, -1)));
+    SET v_is_bilateral = IF(v_sep = '$' AND v_bilateral_token = 'Y', 1, 0);
     
     -- number = video_id (숫자형 변환)
     SET v_video_num = CAST(p_video_id AS UNSIGNED);
@@ -125,6 +129,7 @@ BEGIN
             thumbnail_url,
             video_title,
             video_duration,
+            is_bilateral,
             is_active
         ) VALUES (
             v_video_num,
@@ -140,6 +145,7 @@ BEGIN
             p_thumbnail_url,
             p_title,
             p_duration,
+            v_is_bilateral,
             v_is_active
         )
         ON DUPLICATE KEY UPDATE
@@ -153,6 +159,7 @@ BEGIN
             thumbnail_url = p_thumbnail_url,
             video_title = p_title,
             video_duration = p_duration,
+            is_bilateral = v_is_bilateral,
             is_active = v_is_active,
             updated_at = CURRENT_TIMESTAMP;
     END IF;

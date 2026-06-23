@@ -9,8 +9,8 @@
  *
  * 관련 컴포넌트(`./components/`):
  * - `remoteControlUtils.ts`: 팝업 유틸
- * - `IntroSelectViewPanel.tsx`: 인트로 A/B 선택보기
- * - `introPositionCodes.ts`: 구역·번호 상수
+ * - `IntroSelectViewPanel.tsx`: 인트로 A/B/C/D 선택보기
+ * - `introPositionCodes.ts`: 인트로 구역(A~D)·번호(1~3) 상수
  *
  * 흐름: 마운트 시 토큰 동기 → 탭 선택 → 해당 패널 렌더.
  */

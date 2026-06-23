@@ -7,6 +7,7 @@ import { stressGridCategoryLine } from './stress/grid-display-strategy.js'
 export const getGridCategoryDisplayName = (
   circuit: WorkoutCircuitType,
   positionOrLabel: string,
+  method?: string | null,
 ): string => {
   switch (circuit) {
     case 'loop':
@@ -14,7 +15,7 @@ export const getGridCategoryDisplayName = (
     case 'amrap':
       return amrapGridCategoryLine(circuit, positionOrLabel)
     case 'emom':
-      return emomGridCategoryLine(circuit, positionOrLabel)
+      return emomGridCategoryLine(circuit, positionOrLabel, method)
     case 'stress':
     default:
       return stressGridCategoryLine(circuit, positionOrLabel)

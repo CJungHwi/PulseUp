@@ -174,6 +174,7 @@ class AdminService {
     limit?: number
     search?: string
     role?: string
+    branchId?: string
   } = {}): Promise<UserListResponse> {
     const response = await apiClient.get('/admin/users', { params })
     return response.data.data

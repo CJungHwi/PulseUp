@@ -61,7 +61,7 @@ function buildAmrapExtraBlocks(
       for (const seq of mainExercises) {
         if (Number(seq.round) !== mainRoundsSorted[ri]) continue
         const pos = normalizeGridPosition(seq.position || '')
-        if (pos && /^[AB]\d+$/.test(pos) && !block[pos]) block[pos] = seq
+        if (pos && /^[ABCD]\d+$/.test(pos) && !block[pos]) block[pos] = seq
       }
       if (Object.keys(block).length > 0) blocks.push(block)
     }

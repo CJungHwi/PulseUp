@@ -53,6 +53,8 @@ export interface WorkoutDetail {
   time: number
   position?: string
   reps?: number
+  /** 운동 구성 내 양쪽운동 여부 (workout_history_detail.is_bilateral) */
+  is_bilateral?: boolean
 }
 
 export interface WorkoutPlan {
@@ -73,6 +75,8 @@ export interface ExerciseSequence {
   exercise_name: string
   duration: number
   reps?: number
+  /** 양쪽운동 여부 (재생 시 우측 상단 '(양쪽)' 표시) */
+  is_bilateral?: boolean
   position?: string
   name_ko?: string
   name_en?: string

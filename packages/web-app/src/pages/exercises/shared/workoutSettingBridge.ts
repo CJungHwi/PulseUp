@@ -15,13 +15,18 @@ import type { PanelRow } from './types'
 
 export const EMOM_STRESS_SETTING_KEY = 'EMOM-STRESS'
 export const EMOM_LOOP_SETTING_KEY = 'EMOM-LOOP'
+export const COMBO_STRESS_SETTING_KEY = 'COMBO-STRESS'
+export const COMBO_LOOP_SETTING_KEY = 'COMBO-LOOP'
+
+export const isComboMajorCategory = (majorCategory: string): boolean =>
+  String(majorCategory || '').toUpperCase() === 'COMBO'
 
 export const normalizeCircuitTypeForCategory = (
   majorCategory: string,
   methodType?: string | null,
 ): 'stress' | 'loop' => {
   const normalized = String(methodType || '').trim().toLowerCase()
-  if (majorCategory === 'EMOM' || majorCategory === 'MAIN') {
+  if (majorCategory === 'EMOM' || majorCategory === 'MAIN' || isComboMajorCategory(majorCategory)) {
     return normalized.includes('stress') ? 'stress' : 'loop'
   }
   return normalized === 'loop' ? 'loop' : 'stress'
@@ -37,13 +42,16 @@ export const resolveWorkoutSettingKey = (
   if (majorCategory === 'EMOM') {
     return circuitType === 'stress' ? EMOM_STRESS_SETTING_KEY : EMOM_LOOP_SETTING_KEY
   }
+  if (isComboMajorCategory(majorCategory)) {
+    return circuitType === 'stress' ? COMBO_STRESS_SETTING_KEY : COMBO_LOOP_SETTING_KEY
+  }
   if (majorCategory === 'AMRAP') return 'AMRAP'
   return 'stress'
 }
 
-/** 패널 행 `type` — MAIN/EMOM만 stress|loop, 그 외(AMRAP 등)는 major 그대로 */
+/** 패널 행 `type` — MAIN/EMOM/COMBO만 stress|loop, 그 외(AMRAP 등)는 major 그대로 */
 export const resolvePanelRowType = (majorCategory: string, circuitType: string): string => {
-  if (majorCategory === 'MAIN' || majorCategory === 'EMOM') {
+  if (majorCategory === 'MAIN' || majorCategory === 'EMOM' || isComboMajorCategory(majorCategory)) {
     return normalizeCircuitTypeForCategory(majorCategory, circuitType)
   }
   return majorCategory
@@ -61,6 +69,7 @@ export const mapWorkoutSettingToPanelRows = (
     time: row.time,
     rest: row.rest,
     waterBreak: row.waterBreak,
+    reps: row.reps,
     type: panelType,
   }))
 }
@@ -103,6 +112,7 @@ export const getDefaultPanelRowsForMethod = (
     time: row.time,
     rest: row.rest,
     waterBreak: row.waterBreak,
+    reps: row.reps,
     type: panelType,
   }))
 }

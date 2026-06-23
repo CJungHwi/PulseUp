@@ -1,59 +1,101 @@
+/**
+ * 소스 요약 — 운동 심박수 서비스
+ *
+ * 기능: 실시간/배치 심박수 저장, 운동 세션별 회원-심박계 매핑, 참가자별 심박 요약 조회를 처리한다.
+ *
+ * 호출/연동: `heartrate.routes`, `sp_insert_heart_rate_data`, `heart_rate_data`,
+ *           `workout_heart_rate_participants`, `workout_history_master`, `users`.
+ *
+ * 흐름: API 요청 → 세션별 활성 매핑 확인 → 매핑된 회원 또는 1:1 fallback 사용자 결정
+ *      → 심박 UPSERT 저장 → 회원/수업별 조회 응답 생성.
+ */
+
 import { pool as db } from '../lib/database.js'
 
 interface SaveHeartRateDataParams {
   user_id: string
   workout_history_master_id: string
   device_id: string
-  device_name: string
+  device_name?: string | null
   heart_rate: number
   timestamp: Date
   zone?: string
+  slot_number?: number | null
 }
 
 interface BatchHeartRateData {
   deviceId: string
-  deviceName: string
+  deviceName?: string | null
   heartRate: number
   timestamp: Date
   zone?: string
+  slotNumber?: number | null
+}
+
+interface HeartRateParticipantInput {
+  userId: string
+  deviceId: string
+  deviceName?: string | null
+  slotNumber?: number | null
+}
+
+interface ActiveParticipantRow {
+  user_id: string
+  device_id: string
+}
+
+const toMysqlTimestamp = (timestamp: Date | string) => {
+  // UTC 시간을 한국 시간대(KST, UTC+9)로 변환 (문자열 조립 방식)
+  const t = new Date(timestamp)
+  const kst = new Date(t.getTime() + (9 * 60 * 60 * 1000))
+  const yyyy = kst.getUTCFullYear()
+  const mm = String(kst.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(kst.getUTCDate()).padStart(2, '0')
+  const hh = String(kst.getUTCHours()).padStart(2, '0')
+  const mi = String(kst.getUTCMinutes()).padStart(2, '0')
+  const ss = String(kst.getUTCSeconds()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+}
+
+const buildParticipantMap = (rows: ActiveParticipantRow[]) => {
+  const map = new Map<string, string>()
+  for (const row of rows) {
+    if (row.device_id && row.user_id) map.set(row.device_id, row.user_id)
+  }
+  return map
 }
 
 export class HeartRateService {
   // 단일 심박수 데이터 저장 (프로시저 사용)
   async saveHeartRateData(params: SaveHeartRateDataParams) {
-    const {
-      user_id,
-      workout_history_master_id,
-      device_id,
-      device_name,
-      heart_rate,
-      timestamp,
-      zone
-    } = params
+    const activeParticipants = await this.getActiveParticipants(params.workout_history_master_id)
+    const participantMap = buildParticipantMap(activeParticipants)
+    const targetUserId = participantMap.get(params.device_id)
+      || (participantMap.size === 0 ? params.user_id : null)
 
-    // UTC 시간을 한국 시간대(KST, UTC+9)로 변환 (문자열 조립 방식)
-    const t = new Date(timestamp)
-    const kst = new Date(t.getTime() + (9 * 60 * 60 * 1000))
-    const yyyy = kst.getUTCFullYear()
-    const mm = String(kst.getUTCMonth() + 1).padStart(2, '0')
-    const dd = String(kst.getUTCDate()).padStart(2, '0')
-    const hh = String(kst.getUTCHours()).padStart(2, '0')
-    const mi = String(kst.getUTCMinutes()).padStart(2, '0')
-    const ss = String(kst.getUTCSeconds()).padStart(2, '0')
-    const mysqlTimestamp = `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+    if (!targetUserId) {
+      return {
+        success: false,
+        message: '매핑되지 않은 심박계 데이터는 저장하지 않았습니다',
+        savedCount: 0,
+        skippedCount: 1
+      }
+    }
 
-    console.log(`[HR DEBUG] Single Save Time: Input=${t.toISOString()}, Output=${mysqlTimestamp}`)
+    const mysqlTimestamp = toMysqlTimestamp(params.timestamp)
+
+    console.log(`[HR DEBUG] Single Save Time: Input=${new Date(params.timestamp).toISOString()}, Output=${mysqlTimestamp}`)
 
     await db.execute(
       'CALL sp_insert_heart_rate_data(?, ?, ?, ?, ?, ?, ?)',
       [
-        user_id,
-        workout_history_master_id,
-        device_id,
-        device_name,
+        targetUserId,
+        params.workout_history_master_id,
+        params.device_id,
+        params.device_name || null,
         mysqlTimestamp,
-        heart_rate,
-        zone || null
+        params.heart_rate,
+        params.zone || null
       ]
     )
 
@@ -62,7 +104,7 @@ export class HeartRateService {
 
   // 배치 심박수 데이터 저장 (ANT+ 전용)
   async saveBatchHeartRateData(
-    userId: string,
+    fallbackUserId: string,
     workoutHistoryMasterId: string,
     heartRateData: BatchHeartRateData[]
   ) {
@@ -93,19 +135,30 @@ export class HeartRateService {
 
       //console.log(`✂️ 중복 제거 완료: ${uniqueDataMap.size}개 (제거: ${heartRateData.length - uniqueDataMap.size}개)`)
 
+      const [participantRows] = await connection.execute(
+        `SELECT user_id, device_id
+         FROM workout_heart_rate_participants
+         WHERE workout_history_master_id = ?
+           AND is_active = TRUE
+           AND unassigned_at IS NULL`,
+        [workoutHistoryMasterId]
+      ) as any
+      const participantMap = buildParticipantMap(Array.isArray(participantRows) ? participantRows : [])
+
       // 중복 제거된 데이터만 저장
       let savedCount = 0
+      let skippedCount = 0
       for (const data of uniqueDataMap.values()) {
-        // UTC 시간을 한국 시간대(KST, UTC+9)로 변환 (문자열 조립 방식)
+        const targetUserId = participantMap.get(data.deviceId)
+          || (participantMap.size === 0 ? fallbackUserId : null)
+
+        if (!targetUserId) {
+          skippedCount++
+          continue
+        }
+
         const t = new Date(data.timestamp)
-        const kst = new Date(t.getTime() + (9 * 60 * 60 * 1000))
-        const yyyy = kst.getUTCFullYear()
-        const mm = String(kst.getUTCMonth() + 1).padStart(2, '0')
-        const dd = String(kst.getUTCDate()).padStart(2, '0')
-        const hh = String(kst.getUTCHours()).padStart(2, '0')
-        const mi = String(kst.getUTCMinutes()).padStart(2, '0')
-        const ss = String(kst.getUTCSeconds()).padStart(2, '0')
-        const mysqlTimestamp = `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+        const mysqlTimestamp = toMysqlTimestamp(t)
 
         if (savedCount === 0) {
           console.log(`[HR DEBUG] Time Conversion: Input(UTC)=${t.toISOString()}, Output(KST)=${mysqlTimestamp}`)
@@ -125,10 +178,10 @@ export class HeartRateService {
         const result = await connection.execute(
           'CALL sp_insert_heart_rate_data(?, ?, ?, ?, ?, ?, ?)',
           [
-            userId,
+            targetUserId,
             workoutHistoryMasterId,
             data.deviceId,
-            data.deviceName,
+            data.deviceName || null,
             mysqlTimestamp,
             data.heartRate,
             data.zone || null
@@ -142,10 +195,10 @@ export class HeartRateService {
           `SELECT *, 
            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') as timestamp_formatted
            FROM heart_rate_data 
-           WHERE user_id = ? AND device_id = ? 
+           WHERE user_id = ? AND workout_history_master_id = ? AND device_id = ? 
            AND DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') = ?
            ORDER BY created_at DESC LIMIT 1`,
-          [userId, data.deviceId, mysqlTimestamp]
+          [targetUserId, workoutHistoryMasterId, data.deviceId, mysqlTimestamp]
         ) as any
 
         // if (checkResult.length > 0) {
@@ -165,7 +218,10 @@ export class HeartRateService {
 
       return {
         success: true,
-        message: `${uniqueDataMap.size}개의 심박수 데이터가 저장되었습니다 (중복 ${heartRateData.length - uniqueDataMap.size}개 제거)`
+        savedCount,
+        skippedCount,
+        mappedDeviceCount: participantMap.size,
+        message: `${savedCount}개의 심박수 데이터가 저장되었습니다 (중복 ${heartRateData.length - uniqueDataMap.size}개 제거, 미매핑 ${skippedCount}개 제외)`
       }
     } catch (error) {
       console.error('❌ 심박수 배치 저장 실패:', error)
@@ -174,6 +230,194 @@ export class HeartRateService {
     } finally {
       connection.release()
     }
+  }
+
+  async upsertParticipants(workoutHistoryMasterId: string, participants: HeartRateParticipantInput[]) {
+    const connection = await db.getConnection()
+
+    try {
+      await connection.beginTransaction()
+
+      const [masterRows] = await connection.execute(
+        'SELECT id FROM workout_history_master WHERE id = ? LIMIT 1',
+        [workoutHistoryMasterId]
+      ) as any
+      if (!Array.isArray(masterRows) || masterRows.length === 0) {
+        throw new Error('운동기록을 찾을 수 없습니다')
+      }
+
+      for (const participant of participants) {
+        await connection.execute(
+          `UPDATE workout_heart_rate_participants
+           SET is_active = FALSE,
+               unassigned_at = NOW()
+           WHERE workout_history_master_id = ?
+             AND is_active = TRUE
+             AND (user_id = ? OR device_id = ?)`,
+          [workoutHistoryMasterId, participant.userId, participant.deviceId]
+        )
+
+        await connection.execute(
+          `INSERT INTO workout_heart_rate_participants (
+             workout_history_master_id,
+             user_id,
+             device_id,
+             device_name,
+             slot_number,
+             assigned_at,
+             is_active
+           ) VALUES (?, ?, ?, ?, ?, NOW(), TRUE)`,
+          [
+            workoutHistoryMasterId,
+            participant.userId,
+            participant.deviceId,
+            participant.deviceName || null,
+            participant.slotNumber || null
+          ]
+        )
+      }
+
+      await connection.commit()
+      return this.listParticipants(workoutHistoryMasterId)
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
+  }
+
+  async listParticipants(workoutHistoryMasterId: string) {
+    const [rows] = await db.execute(
+      `SELECT
+        p.id,
+        p.workout_history_master_id,
+        p.user_id,
+        u.userid,
+        u.name,
+        u.email,
+        p.device_id,
+        p.device_name,
+        p.slot_number,
+        p.assigned_at,
+        p.unassigned_at,
+        p.is_active,
+        COUNT(hrd.id) as heart_rate_readings,
+        ROUND(AVG(hrd.heart_rate), 1) as avg_heart_rate,
+        MAX(hrd.heart_rate) as max_heart_rate,
+        MIN(hrd.heart_rate) as min_heart_rate,
+        MAX(hrd.timestamp) as last_heart_rate_at
+      FROM workout_heart_rate_participants p
+      INNER JOIN users u ON u.id = p.user_id
+      LEFT JOIN heart_rate_data hrd
+        ON hrd.workout_history_master_id = p.workout_history_master_id
+        AND hrd.user_id = p.user_id
+        AND hrd.device_id = p.device_id
+      WHERE p.workout_history_master_id = ?
+      GROUP BY
+        p.id,
+        p.workout_history_master_id,
+        p.user_id,
+        u.userid,
+        u.name,
+        u.email,
+        p.device_id,
+        p.device_name,
+        p.slot_number,
+        p.assigned_at,
+        p.unassigned_at,
+        p.is_active
+      ORDER BY p.is_active DESC, p.slot_number ASC, u.name ASC`,
+      [workoutHistoryMasterId]
+    )
+
+    return rows
+  }
+
+  async deactivateParticipant(workoutHistoryMasterId: string, participantId: string) {
+    const [result] = await db.execute(
+      `UPDATE workout_heart_rate_participants
+       SET is_active = FALSE,
+           unassigned_at = NOW()
+       WHERE id = ?
+         AND workout_history_master_id = ?
+         AND is_active = TRUE`,
+      [participantId, workoutHistoryMasterId]
+    ) as any
+
+    return Number(result?.affectedRows || 0) > 0
+  }
+
+  async getParticipantsSummary(workoutHistoryMasterId: string) {
+    const [rows] = await db.execute(
+      `SELECT
+        p.id,
+        p.user_id,
+        u.userid,
+        u.name,
+        u.email,
+        p.device_id,
+        p.device_name,
+        p.slot_number,
+        COUNT(hrd.id) as readings,
+        ROUND(AVG(hrd.heart_rate), 1) as avg_heart_rate,
+        MAX(hrd.heart_rate) as max_heart_rate,
+        MIN(hrd.heart_rate) as min_heart_rate,
+        (
+          SELECT h2.heart_rate
+          FROM heart_rate_data h2
+          WHERE h2.workout_history_master_id = p.workout_history_master_id
+            AND h2.user_id = p.user_id
+            AND h2.device_id = p.device_id
+          ORDER BY h2.timestamp DESC
+          LIMIT 1
+        ) as current_heart_rate,
+        (
+          SELECT h2.zone
+          FROM heart_rate_data h2
+          WHERE h2.workout_history_master_id = p.workout_history_master_id
+            AND h2.user_id = p.user_id
+            AND h2.device_id = p.device_id
+          ORDER BY h2.timestamp DESC
+          LIMIT 1
+        ) as current_zone,
+        MAX(hrd.timestamp) as last_heart_rate_at
+      FROM workout_heart_rate_participants p
+      INNER JOIN users u ON u.id = p.user_id
+      LEFT JOIN heart_rate_data hrd
+        ON hrd.workout_history_master_id = p.workout_history_master_id
+        AND hrd.user_id = p.user_id
+        AND hrd.device_id = p.device_id
+      WHERE p.workout_history_master_id = ?
+        AND p.is_active = TRUE
+        AND p.unassigned_at IS NULL
+      GROUP BY
+        p.id,
+        p.user_id,
+        u.userid,
+        u.name,
+        u.email,
+        p.device_id,
+        p.device_name,
+        p.slot_number,
+        p.workout_history_master_id
+      ORDER BY p.slot_number ASC, u.name ASC`,
+      [workoutHistoryMasterId]
+    )
+
+    return rows
+  }
+
+  private async getActiveParticipants(workoutHistoryMasterId: string) {
+    const [rows] = await db.execute(
+      `SELECT user_id, device_id
+       FROM workout_heart_rate_participants
+       WHERE workout_history_master_id = ?
+         AND is_active = TRUE
+         AND unassigned_at IS NULL`,
+      [workoutHistoryMasterId]
+    )
+    return Array.isArray(rows) ? rows as ActiveParticipantRow[] : []
   }
 
   async getWorkoutHeartRateData(user_id: string, workout_history_master_id: string) {

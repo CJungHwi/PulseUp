@@ -1,6 +1,8 @@
 import { BrowserWindow } from 'electron'
 import type { WorkoutPlayService } from './workout-play-service'
-import { createPlaybackNavigation, normalizeCircuitTypeFromMetadata } from './workout-modules'
+import { createPlaybackNavigation, normalizeCircuitTypeFromMetadata, resolveModuleCircuitType } from './workout-modules'
+import { getHalfRoundsCountFromSession } from './workout-modules/circuits/shared/half-rounds-meta'
+import { resolveLoopQueueSeekPosition } from './workout-modules/circuits/loop/loop-order'
 
 const DEBUG = false
 const log = (...args: any[]) => { if (DEBUG) console.log(...args) }
@@ -83,7 +85,7 @@ export class PlaybackController {
         // 'fall-through': 더 이상 그룹이 없으므로 일반 네비게이션으로 계속
       }
 
-      const circuitType = normalizeCircuitTypeFromMetadata(session.metadata)
+      const circuitType = resolveModuleCircuitType(session.metadata, session.sequences)
       const nav = createPlaybackNavigation(circuitType)
       const nextIndex = nav.findNext(session.sequences, currentIndex, currentRound)
 
@@ -146,7 +148,7 @@ export class PlaybackController {
         }
       }
 
-      const circuitType = normalizeCircuitTypeFromMetadata(session.metadata)
+      const circuitType = resolveModuleCircuitType(session.metadata, session.sequences)
       const nav = createPlaybackNavigation(circuitType)
       const prevIndex = nav.findPrevious(session.sequences, currentIndex, currentRound)
 
@@ -252,7 +254,11 @@ export class PlaybackController {
   private broadcastQueueSeek(targetSeq: any) {
     if (!targetSeq) return
     const round = Number(targetSeq.round)
-    const position = String(targetSeq.position || '')
+    const session = this.playService.activePlaySession
+    const circuitType = normalizeCircuitTypeFromMetadata(session?.metadata)
+    const position = circuitType === 'loop'
+      ? resolveLoopQueueSeekPosition(targetSeq, getHalfRoundsCountFromSession(session))
+      : String(targetSeq.position || '')
     this.deps.broadcastToAllWindows('workout-seek-queue', { round, position })
   }
 

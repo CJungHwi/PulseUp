@@ -1,21 +1,24 @@
 /**
  * 페이지 요약 - 통합 메인 운동 (`/Totalexercises`)
  *
- * 기능: 이력(일반/관리자), 서킷, AMRAP, EMOM(stress/loop) 편집, Vimeo 미리보기, 저장/삭제.
+ * 기능: 이력(일반/관리자), 서킷, AMRAP, EMOM(stress/loop), COMBO(stress/loop) 편집, Vimeo 미리보기, 저장/삭제.
  *
  * 호출/연동:
  * - `GET /workout-categories/workout-setting/:methodType` (EMOM-STRESS/EMOM-LOOP 등, WorkoutSettings와 동일)
  * - `useWorkoutScope(WORKOUT_SCOPE_TOTAL)` → DB scope 사용 여부 확인
  * - `GET /workout-categories/workout-history-master` (yearMonth, workoutCategory, circuitType, memo, admin, workoutScope)
  * - `GET|PUT /workout-categories/workout/:masterId/monitor-display-profile`
- * - 저장: `saveCircuit` → `POST .../HyberStrengthCircuitSave`; `saveAMRAP` → `POST .../Time-StructuredAMRAP`; `saveEMOM` → `POST .../Time-StructuredEMOM`
+ * - 저장: `saveCircuit` → `POST .../HyberStrengthCircuitSave`; `saveAMRAP` → `POST .../Time-StructuredAMRAP`; `saveEMOM` → `POST .../Time-StructuredEMOM`; `saveCOMBO` → `POST .../HyberStrengthCircuitSave`
  * - `DELETE /workout-categories/workout-history/:id`
  * - DB/SP는 `packages/api-server` 운동 저장 라우트 참조.
  *
  * 관련 컴포넌트: `WorkoutHistory`, `WorkoutEditor`, `ExerciseSelectionModal`, `saveWorkout` 모듈.
  *
  * 흐름: 이력 선택 → 에디터에서 패널 구성 → super_admin 전용 관리자체크 상태 유지 → 유형별 저장 함수 → API.
- * position: 메인 A1~A6(좌) / B1~B6(우)
+ * position: 메인 A1~A3, B1~B3, C1~C3, D1~D3 (4구역 × 3슬롯)
+ *
+ * COMBO 반복 횟수: 운동설정(COMBO-STRESS/LOOP) 1·2·3번 반복 횟수 로드 후, 메인 목록 순서
+ * 1·4·7·10…→1번 / 2·5·8·11…→2번 / 3·6·9·12…→3번 횟수 자동 지정 (comboRepsHelper).
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
@@ -35,7 +38,17 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // Types & Logic
 import { Exercise, PanelRow, WorkoutMaster, WorkoutTimeSummary } from './components/types'
-import { saveCircuit, saveAMRAP, saveEMOM, getMainCircuitTotalSecondsFromPanels, getEmomTimeBreakdownFromPanels } from './components/saveWorkout'
+import {
+  saveCircuit,
+  saveAMRAP,
+  saveEMOM,
+  saveCOMBO,
+  getMainCircuitTotalSecondsFromPanels,
+  getEmomTimeBreakdownFromPanels,
+  getComboTimeBreakdownFromPanels,
+  COMBO_GROUP_SIZE,
+  isComboMajorCategory,
+} from './components/saveWorkout'
 import {
   emptyMonitorProfile,
   fetchWorkoutMonitorDisplayProfile,
@@ -44,6 +57,9 @@ import {
 import type { MonitorDisplayProfileState } from '@/pages/WorkoutSettings/components/MonitorDisplayTabs'
 import {
   getMainPositionSortValue,
+  isLegacyMainGridFormat,
+  migrateOldMainGridPosition,
+  normalizeGridPosition,
   positionFromMainIndex,
 } from '@/utils/gridPositionCodes'
 import { WORKOUT_SCOPE_TOTAL } from '../shared/workoutScope'
@@ -56,6 +72,7 @@ import {
   resolvePanelRowType,
   resolveWorkoutSettingKey,
 } from './components/workoutSettingBridge'
+import { applyComboRepsByListOrder } from './components/comboRepsHelper'
 import type { WorkoutSettingApiRow } from '@/pages/WorkoutSettings/components/workoutSettingsModel'
 
 /** WorkoutSettings(`/workout-settings`)에 등록된 방법별 기본 횟수 - MAIN/EMOM은 circuitType(stress|loop) 키 사용 */
@@ -71,7 +88,7 @@ const resolveDefaultRepsFromSettings = (
     const reps = Number(settings[0].reps ?? 0)
     if (reps > 0) return reps
   }
-  if (majorCategory === 'AMRAP' || majorCategory === 'EMOM' || majorCategory === 'MAIN') {
+  if (majorCategory === 'AMRAP' || majorCategory === 'EMOM' || majorCategory === 'MAIN' || isComboMajorCategory(majorCategory)) {
     return fallback
   }
   return fallback
@@ -116,7 +133,7 @@ export default function Totalexercises() {
 
   useEffect(() => {
     if (scopeLoading || isScopeActive) return
-    toast.warning(`${workoutScopeCode} scope가 비활성화되어 있습니다. 저장이 제한될 수 있습니다.`)
+    toast.warning(`${workoutScopeCode} 운동저장구분이 비활성화되어 있습니다. 저장이 제한될 수 있습니다.`)
   }, [scopeLoading, isScopeActive, workoutScopeCode, toast])
 
   // --- Left Panel State (History) ---
@@ -287,10 +304,14 @@ export default function Totalexercises() {
     [majorCategory, circuitType, workoutSettings],
   )
 
+  const isCombo = useMemo(() => isComboMajorCategory(majorCategory), [majorCategory])
+
   const isWaterBreakLastRowOnly = useMemo(
     () => isMainStressOrLoop || majorCategory === 'EMOM',
     [isMainStressOrLoop, majorCategory],
   )
+
+  const isTimeRestLastRowOnly = isCombo
 
   // --- Initialization ---
   useEffect(() => {
@@ -432,7 +453,7 @@ export default function Totalexercises() {
     const major = cat?.major_category || type
     const nextCircuitType = normalizeCircuitTypeForCategory(major, circuitType)
     setCircuitType(nextCircuitType)
-    if (major === 'MAIN' || major === 'EMOM' || major === 'AMRAP') {
+    if (major === 'MAIN' || major === 'EMOM' || major === 'AMRAP' || isComboMajorCategory(major)) {
       try {
         const rows = await fetchWorkoutSettingPanelRows(major, nextCircuitType)
         setPanelRows(rows)
@@ -448,11 +469,11 @@ export default function Totalexercises() {
   const handleCircuitTypeChange = async (type: string) => {
     const nextCircuitType = normalizeCircuitTypeForCategory(majorCategory, type)
     setCircuitType(nextCircuitType)
-    if (majorCategory !== 'MAIN' && majorCategory !== 'EMOM') return
+    if (majorCategory !== 'MAIN' && majorCategory !== 'EMOM' && !isCombo) return
 
     try {
       const rows = await fetchWorkoutSettingPanelRows(majorCategory, nextCircuitType)
-      if (majorCategory === 'EMOM') {
+      if (majorCategory === 'EMOM' || isCombo) {
         setPanelRows(rows)
         return
       }
@@ -500,7 +521,7 @@ export default function Totalexercises() {
     if (currentEditingMasterId) return
     if (rightExerciseType === '운동선택') return
     const major = majorCategory
-    if (major !== 'MAIN' && major !== 'EMOM' && major !== 'AMRAP') return
+    if (major !== 'MAIN' && major !== 'EMOM' && major !== 'AMRAP' && !isComboMajorCategory(major)) return
 
     let cancelled = false
     void fetchWorkoutSettingPanelRows(major, circuitType).then((rows) => {
@@ -604,8 +625,9 @@ export default function Totalexercises() {
           major_category_name: d.major_category_name || '',
           workout_category_id: d.workout_category_id || d.workoutCategoryId || d.exercise_type || null,
           position: d.position || '',
+          is_bilateral: !!(d.is_bilateral ?? d.exercise_is_bilateral),
           reps:
-            categoryValue === 'AMRAP' || categoryValue === 'EMOM' || categoryValue === 'MAIN'
+            categoryValue === 'AMRAP' || categoryValue === 'EMOM' || categoryValue === 'MAIN' || isComboMajorCategory(categoryValue)
               ? (d.reps || defaultRepsForLoad)
               : (d.reps || 0)
         }
@@ -622,7 +644,19 @@ export default function Totalexercises() {
         }
       })
 
-      setExercises(reorderPositions(sortExercisesByPosition(loadedEx), 'main'))
+      setExercises(
+        reorderPositions(
+          sortExercisesByPosition(
+            loadedEx.map((ex) => ({
+              ...ex,
+              position: isLegacyMainGridFormat(loadedEx.map((e) => e.position))
+                ? migrateOldMainGridPosition(ex.position)
+                : normalizeGridPosition(ex.position),
+            })),
+          ),
+          'main',
+        ),
+      )
       setDynamicExercises(reorderPositions(sortExercisesByPosition(loadedDS), 'dynamic'))
       setCoolDownExercises(reorderPositions(sortExercisesByPosition(loadedCD), 'cooldown'))
 
@@ -638,17 +672,20 @@ export default function Totalexercises() {
         const cat = workoutCategories.find(c => c.id?.toString() === m.workout_categories_id)
         const major = cat?.major_category || m.major_category || String(m.workout_categories_id || '')
         const isTimeStructured = major === 'AMRAP' || major === 'EMOM'
-        setPanelRows(plans.map((p: any) => {
+        const isComboLoad = isComboMajorCategory(major)
+        setPanelRows(plans.map((p: any, planIndex: number, planArr: any[]) => {
           const hyd = Number(p.hydration ?? 0)
           const restSec = Number(p.rest ?? 0)
+          const isLastComboRow = isComboLoad && planIndex === planArr.length - 1
           return {
             id: `${Date.now()}_${p.round}_${Math.random()}`,
             round: p.round,
-            time: isTimeStructured ? Math.floor(p.time / 60) : p.time,
-            rest: isTimeStructured ? 0 : p.rest,
+            time: isTimeStructured ? Math.floor(p.time / 60) : isComboLoad && !isLastComboRow ? 0 : p.time,
+            rest: isTimeStructured ? 0 : isComboLoad && !isLastComboRow ? 0 : p.rest,
             waterBreak: isTimeStructured
               ? (hyd > 0 ? Math.floor(hyd / 60) : Math.floor(restSec / 60))
               : (p.hydration || 0),
+            reps: Number(p.reps ?? 0) || undefined,
             type: loadedCircuitType
           }
         }))
@@ -681,6 +718,11 @@ export default function Totalexercises() {
     })
   }
 
+  const finalizeMainExerciseList = (list: Exercise[]) => {
+    const reordered = reorderPositions(list, 'main')
+    return isCombo ? applyComboRepsByListOrder(reordered, panelRows) : reordered
+  }
+
   const handleSave = async () => {
     console.log('🚀 [handleSave] 저장 버튼 클릭됨!', { majorCategory, rightExerciseType })
 
@@ -693,6 +735,14 @@ export default function Totalexercises() {
       const n = exercises.length
       if (n !== 6 && n !== 12) {
         toast.warning('MAIN 운동은 메인 운동이 정확히 6개 또는 12개일 때만 저장할 수 있습니다.')
+        return
+      }
+    }
+
+    if (isCombo) {
+      const n = exercises.length
+      if (n < COMBO_GROUP_SIZE || n % COMBO_GROUP_SIZE !== 0) {
+        toast.warning(`COMBO 운동은 메인 운동이 ${COMBO_GROUP_SIZE}개 단위(3, 6, 9…)일 때만 저장할 수 있습니다.`)
         return
       }
     }
@@ -722,7 +772,7 @@ export default function Totalexercises() {
         (originalDate !== rightSelectedDate?.format('YYYY-MM-DD') ||
           originalCategory !== rightExerciseType ||
           // stress/loop 변경도 신규 insert로 처리
-          ((majorCategory === 'MAIN' || majorCategory === 'EMOM') &&
+          ((majorCategory === 'MAIN' || majorCategory === 'EMOM' || isCombo) &&
             (originalCircuitType || '').toLowerCase() !== (circuitType || '').toLowerCase()))
           ? null
           : currentEditingMasterId,
@@ -760,6 +810,8 @@ export default function Totalexercises() {
         await saveAMRAP(baseParams)
       } else if (majorCategory === 'EMOM') {
         await saveEMOM(baseParams)
+      } else if (isCombo) {
+        await saveCOMBO(baseParams)
       } else {
         await saveCircuit({ ...baseParams, workoutCategory: rightExerciseType, originalWorkoutCategory: rightExerciseType, circuitType })
       }
@@ -842,13 +894,16 @@ export default function Totalexercises() {
       workoutSettings,
     )
 
-    const updatedSelected = selected.map(ex => ({
+    const updatedSelected = selected.map((ex) => ({
       ...ex,
       duration: ex.duration || 30,
       reps:
-        majorCategory === 'AMRAP' || majorCategory === 'EMOM' || majorCategory === 'MAIN'
-          ? (ex.reps || defaultReps)
-          : undefined
+        isCombo
+          ? undefined
+          : majorCategory === 'AMRAP' || majorCategory === 'EMOM' || majorCategory === 'MAIN'
+            ? (ex.reps || defaultReps)
+            : undefined,
+      is_bilateral: !!ex.is_bilateral,
     }))
 
     if (selectedPanelRowForExercise) {
@@ -858,7 +913,7 @@ export default function Totalexercises() {
 
     if (listType === 'dynamic') setDynamicExercises(prev => reorderPositions([...prev, ...updatedSelected], 'dynamic'))
     else if (listType === 'cooldown') setCoolDownExercises(prev => reorderPositions([...prev, ...updatedSelected], 'cooldown'))
-    else setExercises(prev => reorderPositions([...prev, ...updatedSelected], 'main'))
+    else setExercises((prev) => finalizeMainExerciseList([...prev, ...updatedSelected]))
 
     setIsExerciseModalOpen(false)
     setSelectedPanelRowForExercise(null)
@@ -867,7 +922,7 @@ export default function Totalexercises() {
   const handleDeleteExercise = (id: string, listType: 'main' | 'dynamic' | 'cooldown') => {
     if (listType === 'dynamic') setDynamicExercises(prev => reorderPositions(prev.filter(ex => ex.id !== id), 'dynamic'))
     else if (listType === 'cooldown') setCoolDownExercises(prev => reorderPositions(prev.filter(ex => ex.id !== id), 'cooldown'))
-    else setExercises(prev => reorderPositions(prev.filter(ex => ex.id !== id), 'main'))
+    else setExercises((prev) => finalizeMainExerciseList(prev.filter((ex) => ex.id !== id)))
   }
 
   const handleMoveExercise = (index: number, direction: 'up' | 'down', listType: 'main' | 'dynamic' | 'cooldown') => {
@@ -878,7 +933,7 @@ export default function Totalexercises() {
 
     if (listType === 'dynamic') setDynamicExercises(reorderPositions(list, 'dynamic'))
     else if (listType === 'cooldown') setCoolDownExercises(reorderPositions(list, 'cooldown'))
-    else setExercises(reorderPositions(list, 'main'))
+    else setExercises(finalizeMainExerciseList(list))
   }
 
   const handleReorderExercise = (fromIndex: number, toIndex: number, listType: 'main' | 'dynamic' | 'cooldown') => {
@@ -897,7 +952,7 @@ export default function Totalexercises() {
 
     if (listType === 'dynamic') setDynamicExercises(reorderPositions(sourceList, 'dynamic'))
     else if (listType === 'cooldown') setCoolDownExercises(reorderPositions(sourceList, 'cooldown'))
-    else setExercises(reorderPositions(sourceList, 'main'))
+    else setExercises(finalizeMainExerciseList(sourceList))
   }
 
   const handleDurationChange = (id: string, duration: number, listType: 'main' | 'dynamic' | 'cooldown') => {
@@ -909,8 +964,25 @@ export default function Totalexercises() {
     setExercises(prev => prev.map(ex => ex.id === id ? { ...ex, reps: Math.max(1, reps) } : ex))
   }
 
+  const handleBilateralChange = (id: string, checked: boolean, listType: 'main' | 'dynamic' | 'cooldown') => {
+    const updateList = (list: Exercise[]) => list.map(ex => ex.id === id ? { ...ex, is_bilateral: checked } : ex)
+    if (listType === 'dynamic') {
+      setDynamicExercises(prev => updateList(prev))
+      return
+    }
+    if (listType === 'cooldown') {
+      setCoolDownExercises(prev => updateList(prev))
+      return
+    }
+    setExercises(prev => updateList(prev))
+  }
+
   // --- Panel Management ---
   const handleAddPanelRow = () => {
+    if (isCombo) {
+      toast.warning('COMBO 운동은 운동 3개(Row 3개)로 고정됩니다.')
+      return
+    }
     if (majorCategory === 'AMRAP' && panelRows.length >= 2) {
       toast.warning('AMRAP은 운동설계(Round)를 최대 2개까지 지정할 수 있습니다.')
       return
@@ -929,6 +1001,10 @@ export default function Totalexercises() {
   }
 
   const handleRemovePanelRow = () => {
+    if (isCombo) {
+      toast.warning('COMBO 운동은 운동 3개(Row 3개)로 고정됩니다.')
+      return
+    }
     if (!selectedPanelRowId) return
     if (majorCategory === 'AMRAP' && panelRows.length <= 1) {
       toast.warning('AMRAP은 운동설계(Round)를 최소 1개 유지해야 합니다.')
@@ -938,7 +1014,41 @@ export default function Totalexercises() {
     setSelectedPanelRowId(null)
   }
 
-  const handlePanelTimeChange = (rowId: string, field: 'time' | 'rest' | 'waterBreak', increment: boolean) => {
+  const handlePanelTimeChange = (
+    rowId: string,
+    field: 'time' | 'rest' | 'waterBreak' | 'reps',
+    increment: boolean,
+  ) => {
+    if (field === 'time' || field === 'rest') {
+      if (isTimeRestLastRowOnly) {
+        setPanelRows((prev) => {
+          const lastIdx = prev.length - 1
+          const idx = prev.findIndex((r) => r.id === rowId)
+          if (idx < 0 || idx !== lastIdx) return prev
+          const step = 5
+          return prev.map((r, i) => {
+            if (i !== lastIdx) return { ...r, time: 0, rest: 0 }
+            const val = r[field] as number
+            const next = increment ? val + step : Math.max(0, val - step)
+            return { ...r, [field]: next }
+          })
+        })
+        return
+      }
+    }
+
+    if (field === 'reps') {
+      setPanelRows((prev) =>
+        prev.map((r) => {
+          if (r.id !== rowId) return r
+          const val = r.reps ?? 10
+          const next = increment ? val + 1 : Math.max(1, val - 1)
+          return { ...r, reps: next }
+        }),
+      )
+      return
+    }
+
     const isTimeStructured = majorCategory === 'AMRAP' || majorCategory === 'EMOM'
     const step = isTimeStructured ? 1 : 5
 
@@ -966,7 +1076,34 @@ export default function Totalexercises() {
     }))
   }
 
-  const handlePanelTimeDirectChange = (rowId: string, field: 'time' | 'rest' | 'waterBreak', value: number) => {
+  const handlePanelTimeDirectChange = (
+    rowId: string,
+    field: 'time' | 'rest' | 'waterBreak' | 'reps',
+    value: number,
+  ) => {
+    if (field === 'reps') {
+      const clamped = Math.max(1, Math.floor(value))
+      setPanelRows((prev) =>
+        prev.map((r) => (r.id === rowId ? { ...r, reps: clamped } : r)),
+      )
+      return
+    }
+
+    if (field === 'time' || field === 'rest') {
+      if (isTimeRestLastRowOnly) {
+        const clamped = Math.max(0, Math.floor(value))
+        setPanelRows((prev) => {
+          const lastIdx = prev.length - 1
+          const idx = prev.findIndex((r) => r.id === rowId)
+          if (idx < 0 || idx !== lastIdx) return prev
+          return prev.map((r, i) =>
+            i === lastIdx ? { ...r, [field]: clamped } : { ...r, time: 0, rest: 0 },
+          )
+        })
+        return
+      }
+    }
+
     const clamped = Math.max(0, Math.floor(value))
 
     if (field === 'waterBreak' && isWaterBreakLastRowOnly) {
@@ -1008,6 +1145,17 @@ export default function Totalexercises() {
     })
   }, [isWaterBreakLastRowOnly])
 
+  /** COMBO 패널(운동1·2·3) 반복 횟수 변경 시 목록 순서에 맞게 메인 운동 reps 동기화 */
+  useEffect(() => {
+    if (!isCombo) return
+    setExercises((prev) => {
+      if (prev.length === 0) return prev
+      const next = applyComboRepsByListOrder(prev, panelRows)
+      const isSame = prev.every((ex, i) => ex.reps === next[i]?.reps)
+      return isSame ? prev : next
+    })
+  }, [isCombo, panelRows])
+
   const handlePanelExerciseSelect = (rowId: string) => {
     setSelectedPanelRowForExercise(rowId)
     setIsExerciseModalOpen(true)
@@ -1027,6 +1175,9 @@ export default function Totalexercises() {
       })
     } else if (majorCategory === 'EMOM') {
       const br = getEmomTimeBreakdownFromPanels(panelRows, exercises)
+      mainSeconds = br.mainSeconds + br.restSeconds
+    } else if (isCombo) {
+      const br = getComboTimeBreakdownFromPanels(panelRows, exercises)
       mainSeconds = br.mainSeconds + br.restSeconds
     } else {
       mainSeconds = getMainCircuitTotalSecondsFromPanels(panelRows, exercises)
@@ -1148,6 +1299,7 @@ export default function Totalexercises() {
           onReorderExercise={handleReorderExercise}
           onDurationChange={handleDurationChange}
           onRepsChange={handleRepsChange}
+          onBilateralChange={handleBilateralChange}
           panelRows={panelRows}
           selectedPanelRowId={selectedPanelRowId}
           setSelectedPanelRowId={setSelectedPanelRowId}
@@ -1205,7 +1357,7 @@ export default function Totalexercises() {
             ? 'DS' 
             : activeTab === 'cooldown' 
             ? 'CD' 
-            : (majorCategory === 'MAIN' || majorCategory === 'AMRAP' || majorCategory === 'EMOM')
+            : (majorCategory === 'MAIN' || majorCategory === 'AMRAP' || majorCategory === 'EMOM' || isCombo)
             ? 'MAIN'
             : (selectedCategory?.major_category || '')
         }

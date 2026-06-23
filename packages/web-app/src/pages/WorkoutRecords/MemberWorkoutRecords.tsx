@@ -9,7 +9,8 @@
  * - `SummaryCards`: 월간 운동/출석/심박 KPI 카드
  * - `BookingAttendanceList`: 수업 예약 목록 및 출석 결과
  * - `WorkoutDayList`: 운동일 목록 및 심박 그래프 선택
- * - `HeartRateChartCard`: Recharts 기반 수업일별 심박 그래프
+ * - `HeartRateChartCard`: Recharts 기반 수업일별 심박 그래프 미리보기(더보기 → 상세)
+ * - `MemberWorkoutHeartRateDetail`: `/account/workout-records/:workoutId/heart-rate` 개인 심박 상세
  * - `InbodyOverviewCard`: 최근 인바디 현황 및 등록 예정 안내
  *
  * 흐름: 월 선택 → 요약 API 조회 → 첫 운동일 선택 → 선택 운동일 심박 상세 조회 → 그래프/목록 동시 표시.
@@ -176,7 +177,11 @@ export const MemberWorkoutRecords = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(260px,0.85fr)_minmax(430px,1.45fr)_minmax(280px,0.9fr)] gap-[3px] flex-1 min-h-0 overflow-hidden">
         <BookingAttendanceList bookings={overview.bookings} />
-        <HeartRateChartCard heartRate={heartRate} loading={heartRateLoading} />
+        <HeartRateChartCard
+          workoutId={selectedWorkoutId}
+          heartRate={heartRate}
+          loading={heartRateLoading}
+        />
         <div className="min-h-0 flex flex-col gap-[3px] overflow-hidden">
           <WorkoutDayList
             workoutDays={overview.workoutDays}

@@ -117,7 +117,7 @@ export const runAmrapMainRound = (
     })),
   })
 
-  // Loop/EMOM과 동일: B* 후반 블록 진입 시 슬롯 큐를 한 칸 진행 (A* → B* 영상 전환)
+  // Loop/EMOM과 동일: 후반(C/D) 블록 진입 시 슬롯 큐를 한 칸 진행 (A/B → C/D 영상 전환)
   const amrapHalfGroupIndex: 0 | 1 = allRoundExercises.some((s) =>
     isSecondMainHalfPosition(String(s.position || '')),
   )
@@ -137,7 +137,7 @@ export const runAmrapMainRound = (
     }
   }
 
-  // 예시2(2-6): 후반 B* 블록 없이 라운드만 바뀌면 큐 블록도 한 칸 advance 필요.
+  // 예시2(2-6): 후반 C/D 블록 없이 라운드만 바뀌면 큐 블록도 한 칸 advance 필요.
   const lastPlayedAmrapRound = ctx._lastAmrapMainRoundNumber
   const needSameSlotRoundAdvance =
     lastPlayedAmrapRound != null &&
@@ -147,7 +147,7 @@ export const runAmrapMainRound = (
     if (isFiveScreenMode) {
       log('🎬 [AmrapModule] 5-screen: 동일 슬롯 라운드 advance 생략')
     } else {
-      log('🎬 [AmrapModule] 동일 A* 슬롯으로 메인 라운드만 증가(예: 설정2·운동6) — 슬롯 advance')
+      log('🎬 [AmrapModule] 동일 A/B 슬롯으로 메인 라운드만 증가(예: 설정2·운동6) — 슬롯 advance')
       ctx.broadcastToAllWindows('workout-advance-slots', { slots: [1, 2, 3] })
     }
   }

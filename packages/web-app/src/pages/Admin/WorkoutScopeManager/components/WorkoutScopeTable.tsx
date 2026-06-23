@@ -1,7 +1,7 @@
 /**
- * WorkoutScopeTable — 운동 scope 목록 테이블
+ * WorkoutScopeTable — 운동저장구분 목록 테이블
  *
- * 기능: scope 목록 표시, 행 선택·더블클릭 수정, 로딩/빈 상태 처리.
+ * 기능: 운동저장구분 목록 표시, 행 선택·더블클릭 수정, 로딩/빈 상태 처리.
  * 사용처: `WorkoutScopeManager.tsx`
  */
 
@@ -48,7 +48,7 @@ export const WorkoutScopeTable: React.FC<WorkoutScopeTableProps> = ({
     <CardHeader className="h-12 px-4 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0">
       <CardTitle className="text-lg font-bold flex items-center gap-2 leading-none">
         <Layers className="h-5 w-5 text-primary" />
-        Scope 목록
+        운동저장구분 목록
       </CardTitle>
       <Badge variant="outline">총 {items.length}건</Badge>
     </CardHeader>
@@ -58,23 +58,22 @@ export const WorkoutScopeTable: React.FC<WorkoutScopeTableProps> = ({
         <Table className="w-full table-fixed border-separate border-spacing-0">
           <TableHeader className="sticky top-0 z-10 shadow-sm">
             <TableRow className="hover:bg-transparent border-b-0">
-              <TableHead className={cn(HEADER_CELL, 'w-[120px]')}>코드</TableHead>
-              <TableHead className={cn(HEADER_CELL, 'w-[220px]')}>이름</TableHead>
-              <TableHead className={cn(HEADER_CELL, 'w-[80px]')}>정렬</TableHead>
+              <TableHead className={cn(HEADER_CELL, 'w-[140px]')}>코드</TableHead>
+              <TableHead className={cn(HEADER_CELL, 'w-[280px]')}>이름</TableHead>
               <TableHead className={cn(HEADER_CELL_LAST, 'w-[100px]')}>상태</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading && items.length === 0 ? (
               <TableRow className="border-b-0">
-                <TableCell colSpan={4} className="h-24 text-center border-b-0">
+                <TableCell colSpan={3} className="h-24 text-center border-b-0">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow className="border-b-0">
-                <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground border-b-0">
-                  등록된 scope가 없습니다.
+                <TableCell colSpan={3} className="h-24 text-center text-sm text-muted-foreground border-b-0">
+                  등록된 운동저장구분이 없습니다.
                 </TableCell>
               </TableRow>
             ) : (
@@ -89,7 +88,7 @@ export const WorkoutScopeTable: React.FC<WorkoutScopeTableProps> = ({
                   onDoubleClick={() => onRowDoubleClick(item)}
                   tabIndex={0}
                   role="button"
-                  aria-label={`${item.scopeName} scope 선택`}
+                  aria-label={`${item.scopeName} 운동저장구분 선택`}
                   aria-selected={selectedId === item.id}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -102,7 +101,6 @@ export const WorkoutScopeTable: React.FC<WorkoutScopeTableProps> = ({
                   <TableCell className={cn(BODY_CELL, 'truncate text-left')} title={item.scopeName}>
                     {item.scopeName}
                   </TableCell>
-                  <TableCell className={BODY_CELL}>{item.sortOrder}</TableCell>
                   <TableCell className={BODY_CELL_LAST}>
                     <Badge variant={item.isActive ? 'default' : 'secondary'}>
                       {item.isActive ? '사용' : '미사용'}

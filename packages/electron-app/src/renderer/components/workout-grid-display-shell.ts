@@ -22,7 +22,7 @@ export const createWorkoutGridCells = (
     .map((slotNum) => {
       const hidden = isStretching && slotNum > 3
       const cellFrameStyle = isIntro
-        ? buildIntroVideoCellDividerStyle(slotNum)
+        ? buildIntroVideoCellDividerStyle(slotNum, introFiveScreen)
         : 'border: 3px solid #444; border-radius: 12px;'
       const slotLabel = isIntro ? getIntroSlotDefaultLabel(side, slotNum, { fiveScreen: introFiveScreen }) : `${prefix}${slotNum}`
       return `
@@ -99,7 +99,7 @@ export type WorkoutGridShellParams = {
 
 export const buildWorkoutGridShellHtml = (p: WorkoutGridShellParams): string => {
   const prefix: 'L' | 'R' = p.side === 'left' || p.side === 'left-2' ? 'L' : 'R'
-  const gridCols = p.isIntro ? 'repeat(2, 1fr)' : '1fr'
+  const gridCols = p.isIntro ? (p.introFiveScreen ? '1fr' : 'repeat(2, 1fr)') : '1fr'
   const introImageSection = buildWorkoutGridIntroImageSection(p.side, p.isIntro, p.introImageUrl)
   const slotCount = p.isIntro ? (p.introFiveScreen ? 3 : 6) : p.stretchingSlotCount > 0 ? p.stretchingSlotCount : 3
   const gridCellsHtml = createWorkoutGridCells(prefix, slotCount, p.isIntro, p.stretchingSlotCount > 0, p.side, !!p.introFiveScreen)
@@ -215,7 +215,7 @@ export const buildWorkoutGridShellHtml = (p: WorkoutGridShellParams): string => 
           display: grid; 
           grid-template-columns: ${gridCols}; 
           grid-template-rows: ${p.isIntro ? 'repeat(3, minmax(0, 1fr))' : 'repeat(3, 1fr)'};
-          ${p.isIntro ? 'grid-auto-flow: column;' : ''}
+          ${p.isIntro && !p.introFiveScreen ? 'grid-auto-flow: column;' : ''}
           gap: 0px;
           padding: 0px;
           overflow: hidden;

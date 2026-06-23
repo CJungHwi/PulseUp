@@ -10,7 +10,7 @@
  *
  * 관련 컴포넌트(`./components/`): 카드·테이블·다이얼로그·엑셀 유틸(`vimeoExcelImport`/`Export`).
  *
- * 흐름: 토큰·필터 설정 → Vimeo/서버 API로 목록 동기 → 편집·저장.
+ * 흐름: 토큰·필터 설정 → Vimeo/서버 API로 목록 동기 → 설명 5필드(양쪽운동 Y/N 포함) 편집·저장.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Textarea } from '../../../components/ui/textarea'
+import { Switch } from '../../../components/ui/switch'
 import { Badge } from '../../../components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '../../../components/ui/alert'
 import {
@@ -67,6 +68,10 @@ import {
     findVideoIdByVimeoTitle,
     countVideosWithTrimmedTitle,
 } from './components/vimeoExcelImport'
+import {
+    parseVimeoWorkoutDescription,
+    setVimeoWorkoutDescriptionBilateral,
+} from './components/vimeoDescriptionFormat'
 
 // Vimeo 영상 타입 정의
 interface VimeoVideo {
@@ -819,6 +824,14 @@ const Vimeo: React.FC = () => {
     const activeCount = filteredVideos.filter(isActiveTrue).length
     const inactiveCount = filteredVideos.filter(isActiveFalse).length
     const markedDeleteCount = videos.filter(isActiveFalse).length
+    const editableDescriptionParts = React.useMemo(
+        () => parseVimeoWorkoutDescription(editableDescription),
+        [editableDescription]
+    )
+
+    const handleEditableDescriptionBilateralChange = (checked: boolean) => {
+        setEditableDescription(prev => setVimeoWorkoutDescriptionBilateral(prev, checked))
+    }
 
     const handleConfirmPurgeInactive = async () => {
         if (markedDeleteCount === 0) {
@@ -1346,6 +1359,21 @@ const Vimeo: React.FC = () => {
                                             className="mt-1 min-h-[80px] resize-y"
                                             aria-label="영상 설명"
                                         />
+                                        <div className="mt-2 flex items-center justify-between rounded-md border border-[#343637] dark:border-[#6b7280] bg-card px-3 py-2">
+                                            <div>
+                                                <p className="text-xs font-semibold text-foreground">양쪽운동</p>
+                                                <p className="text-[11px] text-muted-foreground">설명 마지막에 {editableDescriptionParts.isBilateral ? '$Y' : '$N'}로 저장됩니다.</p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Switch
+                                                    checked={editableDescriptionParts.isBilateral}
+                                                    onCheckedChange={handleEditableDescriptionBilateralChange}
+                                                    aria-label="Vimeo 설명 양쪽운동 여부"
+                                                    className="data-[state=checked]:bg-blue-600 data-[state=unchecked]:bg-slate-500"
+                                                />
+                                                <span className="text-xs font-bold">{editableDescriptionParts.isBilateral ? 'Y' : 'N'}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="mt-4 flex gap-2 flex-wrap">

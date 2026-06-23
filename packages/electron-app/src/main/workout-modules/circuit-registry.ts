@@ -8,6 +8,8 @@ import { AmrapModule } from './circuits/amrap/amrap-module'
 
 import { EmomModule } from './circuits/emom/emom-module'
 
+import { EmomStressModule } from './circuits/emom-stress/emom-stress-module'
+
 import { LoopModule } from './circuits/loop/loop-module'
 
 import { StressModule } from './circuits/stress/stress-module'
@@ -18,7 +20,11 @@ import { LoopNavigation } from './circuits/loop/loop-navigation'
 
 import { EmomNavigation } from './circuits/emom/emom-navigation'
 
+import { EmomStressNavigation } from './circuits/emom-stress/emom-stress-navigation'
+
 import { AmrapNavigation } from './circuits/amrap/amrap-navigation'
+
+import { isEmomStressPlayback } from './circuits/emom-stress/emom-stress-detect'
 
 import type { IntroCircuitKind, IntroSequenceCollectContext } from './circuits/shared/intro-circuit'
 
@@ -94,6 +100,24 @@ export const normalizeCircuitTypeFromMetadata = (
 
 
 
+/**
+ * 모듈/네비게이션 선택용 circuitType 해석.
+ * EMOM 운동이 stress 방식이면 'emom-stress'를 반환한다(화면 표시/큐 빌더용 'emom'과 구분).
+ * sequences가 주어지면 metadata 유실 시에도 저장 순서로 stress 여부를 추론한다.
+ */
+export const resolveModuleCircuitType = (
+  metadata: { workoutCategory?: unknown; circuitType?: unknown } | null | undefined,
+  sequences?: any[],
+): string => {
+  const base = normalizeCircuitTypeFromMetadata(metadata)
+  if (base !== 'emom') return base
+  return isEmomStressPlayback(metadata as Record<string, unknown>, sequences ?? [])
+    ? 'emom-stress'
+    : 'emom'
+}
+
+
+
 export const createWorkoutModuleForCircuitType = (circuitType: string): WorkoutModule => {
 
   switch (circuitType) {
@@ -105,6 +129,10 @@ export const createWorkoutModuleForCircuitType = (circuitType: string): WorkoutM
     case 'emom':
 
       return new EmomModule()
+
+    case 'emom-stress':
+
+      return new EmomStressModule()
 
     case 'amrap':
 
@@ -126,6 +154,8 @@ export const createPlaybackNavigation = (circuitType: string): PlaybackNavigatio
       return new LoopNavigation()
     case 'emom':
       return new EmomNavigation()
+    case 'emom-stress':
+      return new EmomStressNavigation()
     case 'amrap':
       return new AmrapNavigation()
     case 'stress':

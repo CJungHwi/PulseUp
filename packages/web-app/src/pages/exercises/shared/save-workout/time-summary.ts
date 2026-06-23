@@ -1,6 +1,7 @@
 import type { SequenceMode } from '../sequenceMode'
 import { Exercise, PanelRow } from '../types'
 import { WorkoutExerciseItem, WorkoutTimeSummaryWithRest } from './save-types'
+import { getComboTimeBreakdownFromPanels } from './combo-workout-helpers'
 import {
     getAmrapTimeBreakdownFromPanels,
     getEmomTimeBreakdownFromPanels,
@@ -30,6 +31,10 @@ export function calculateWorkoutTimeSummary(
         restSeconds = br.restSeconds
     } else if (majorCat === 'EMOM') {
         const br = getEmomTimeBreakdownFromPanels(panelRows, exercises, sequenceMode)
+        mainSeconds = br.mainSeconds
+        restSeconds = br.restSeconds
+    } else if (majorCat === 'COMBO') {
+        const br = getComboTimeBreakdownFromPanels(panelRows, exercises)
         mainSeconds = br.mainSeconds
         restSeconds = br.restSeconds
     } else if (

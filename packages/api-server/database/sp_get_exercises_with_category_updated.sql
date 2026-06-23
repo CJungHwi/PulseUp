@@ -52,6 +52,7 @@ BEGIN
         e.video_start_time,
         e.video_end_time,
         e.video_loop_count,
+        e.is_bilateral,
         e.is_active,
         e.created_at,
         e.updated_at,

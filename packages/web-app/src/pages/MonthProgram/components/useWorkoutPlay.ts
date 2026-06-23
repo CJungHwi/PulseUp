@@ -79,10 +79,26 @@ const computePlayMetadata = (
   return { maxRound, totalSets, exerciseCount, totalDuration }
 }
 
+/**
+ * 카테고리 토큰 정규화.
+ * workoutCategoriesId는 UUID일 수 있으므로 이름(major_category_name)을 우선 확인한다.
+ */
+const resolveCategoryToken = (master: WorkoutMaster): string => {
+  const name = (master.workoutCategoriesName || '').toString().toUpperCase()
+  const id = (master.workoutCategoriesId || '').toString().toUpperCase()
+  if (name === 'EMOM' || id === 'EMOM') return 'EMOM'
+  if (name === 'AMRAP' || id === 'AMRAP') return 'AMRAP'
+  return name || id
+}
+
+/** EMOM 방식(stress/loop)은 master.circuitType에 저장되어 있다. */
+const resolveEmomMethod = (master: WorkoutMaster): 'stress' | 'loop' =>
+  String(master.circuitType || 'loop').toLowerCase() === 'stress' ? 'stress' : 'loop'
+
 const computeCircuitType = (master: WorkoutMaster): string => {
-  const wcId = (master.workoutCategoriesId || '').toString().toUpperCase()
-  if (wcId === 'EMOM') return 'emom'
-  if (wcId === 'AMRAP') return 'amrap'
+  const token = resolveCategoryToken(master)
+  if (token === 'EMOM') return 'emom'
+  if (token === 'AMRAP') return 'amrap'
   return master.circuitType || 'stress'
 }
 
@@ -181,6 +197,15 @@ export const useWorkoutPlay = ({
   const buildPlayData = (mergedSequences: ExerciseSequence[], currentCircuitType: string) => {
     if (!selectedMaster || !user) return null
     const meta = computePlayMetadata(selectedMaster, mergedSequences)
+    const categoryToken = resolveCategoryToken(selectedMaster)
+    const isEmomCategory = categoryToken === 'EMOM'
+    // Electron은 workoutCategory가 'EMOM'/'AMRAP'(이름)일 때만 카테고리를 인식한다.
+    // workoutCategoriesId가 UUID인 경우를 대비해 EMOM/AMRAP은 이름 토큰으로 전송한다.
+    const workoutCategory =
+      isEmomCategory || categoryToken === 'AMRAP'
+        ? categoryToken
+        : selectedMaster.workoutCategoriesId || ''
+    const emomMethod = isEmomCategory ? resolveEmomMethod(selectedMaster) : undefined
     return {
       masterId: selectedMaster.id,
       userId: user.id,
@@ -188,9 +213,11 @@ export const useWorkoutPlay = ({
       metadata: {
         totalRounds: meta.maxRound,
         totalSets: meta.totalSets,
-        workoutCategory: selectedMaster.workoutCategoriesId || '',
+        workoutCategory,
         major_category_name: selectedMaster.workoutCategoriesName || '',
         circuitType: currentCircuitType,
+        // EMOM 방식(stress/loop)을 Electron 모듈/표시 판별에 전달
+        ...(emomMethod ? { emomCircuitType: emomMethod, method_type: emomMethod } : {}),
         date: selectedMaster.date,
         time: selectedMaster.time,
         workoutPlans,

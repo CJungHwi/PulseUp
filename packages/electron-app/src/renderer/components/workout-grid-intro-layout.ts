@@ -17,7 +17,7 @@ const INTRO_IMAGE_CONTAINER_STYLE = `
   overflow: hidden;
 `
 
-export const buildIntroVideoCellDividerStyle = (slotNum: number): string => {
+export const buildIntroVideoCellDividerStyle = (slotNum: number, fiveScreen: boolean = false): string => {
   const isLeftColumn = slotNum <= INTRO_GRID_ROWS
   const isLastRow = slotNum === INTRO_GRID_ROWS || slotNum === INTRO_GRID_ROWS * INTRO_GRID_COLUMNS
 
@@ -25,7 +25,7 @@ export const buildIntroVideoCellDividerStyle = (slotNum: number): string => {
     border: 0;
     border-radius: 0;
     box-sizing: border-box;
-    ${isLeftColumn ? 'border-right: 2px solid #222;' : ''}
+    ${!fiveScreen && isLeftColumn ? 'border-right: 2px solid #222;' : ''}
     ${isLastRow ? '' : 'border-bottom: 2px solid #222;'}
   `
 }

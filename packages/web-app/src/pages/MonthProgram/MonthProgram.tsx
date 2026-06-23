@@ -9,11 +9,12 @@
  * - `electronHttp`: startWorkoutPlay/Relay, checkDeviceConnected, 디바이스 로컬 스토리지
  *
  * 관련 컴포넌트(`./components/`):
- * - `MonthProgramFilterBar`: 운동 scope/운동구분/서킷구분/년월 필터
- * - `MonthProgramMasterTabs`: 사용자/관리자 마스터 테이블 탭
+ * - `MonthProgramFilterBar`: 운동저장구분/운동구분/서킷구분/년월 필터
+ * - `MonthProgramMasterTabs`: 사용자/관리자 마스터 테이블 탭 (운동저장구분·운동구분·서킷·메모)
  * - `WorkoutPlanTable`, `WorkoutSummaryTable`: 좌(라운드/세트)·우(요약) 테이블
  * - `WorkoutMemoBar`: 메모 입력
- * - `WorkoutDetailTable`: 운동 상세 정보(AMRAP/EMOM·stress/loop 횟수) + 컬럼 리사이즈
+ * - `WorkoutDetailTable`: 운동 상세 정보(AMRAP/EMOM·stress/loop 횟수·양쪽여부) + 운동명 클릭 영상 모달 + 컬럼 리사이즈
+ * - `ExerciseVideoDialog`, `monthProgramVideoUtils`: 운동 영상 모달 팝업
  * - `ElectronIPDialog`, `CopyConfirmToast`
  * - `useMainSplitter`, `useDetailColumnResize`: 분할/컬럼 리사이즈 훅
  * - `useWorkoutPlay`: Play / 디바이스 선택 / Electron IP 다이얼로그 훅
@@ -79,8 +80,8 @@ import type { WorkoutScopeRecord } from '../exercises/shared/workoutScope'
 
 dayjs.extend(updateLocale)
 
-const DETAIL_COL_WIDTHS = [10, 20, 20, 14, 26, 10]
-const DETAIL_COL_WIDTHS_WITH_REPS = [8, 7, 18, 18, 13, 28, 8]
+const DETAIL_COL_WIDTHS = [10, 18, 18, 13, 24, 9, 8]
+const DETAIL_COL_WIDTHS_WITH_REPS = [8, 7, 16, 16, 12, 26, 7, 8]
 
 const MonthProgram: React.FC = () => {
   const { showSnackbar } = useSnackbar()
@@ -372,6 +373,7 @@ const MonthProgram: React.FC = () => {
               adminWorkoutMasters={adminWorkoutMasters}
               selectedMasterId={selectedMasterId}
               onRowClick={handleMasterRowClick}
+              workoutScopes={workoutScopes}
             />
           </ShadcnCardContent>
         </ShadcnCard>

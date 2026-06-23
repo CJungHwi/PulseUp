@@ -83,7 +83,7 @@ export const runEmomMainRound = (
 
   if (!isFiveScreenMode) {
     preloadEmomFromTimeline(ctx, currentIndex)
-    // 전반(A*)에서 후반(B*) 블록을 미리 로드한다. 후반에서는 다음 블록이 없어 생략.
+    // 전반(A/B)에서 후반(C/D) 블록을 미리 로드한다. 후반에서는 다음 블록이 없어 생략.
     if (emomGroupIndex === 0) {
       preloadNextEmomGroup(ctx, 0, currentRound)
     }

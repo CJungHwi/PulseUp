@@ -50,6 +50,7 @@ interface CreateExerciseRequest {
   video_start_time?: number;
   video_end_time?: number;
   video_loop_count?: number;
+  is_bilateral?: boolean;
   is_active?: boolean;
 }
 
@@ -70,6 +71,7 @@ interface UpdateExerciseRequest {
   video_start_time?: number;
   video_end_time?: number;
   video_loop_count?: number;
+  is_bilateral?: boolean;
   is_active?: boolean;
 }
 
@@ -111,6 +113,7 @@ interface ExerciseResponse {
   characteristics?: string;
   equipment?: string;
   purpose: string;
+  is_bilateral?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -273,6 +276,7 @@ export class WorkoutCategoryService {
         data.video_start_time || null,
         data.video_end_time || null,
         data.video_loop_count || null,
+        data.is_bilateral ?? false,
         data.is_active ?? true
       ]);
 
@@ -348,6 +352,7 @@ export class WorkoutCategoryService {
         data.video_start_time || null,
         data.video_end_time || null,
         data.video_loop_count || null,
+        data.is_bilateral !== undefined ? data.is_bilateral : null,
         data.is_active !== undefined ? data.is_active : null
       ]);
 

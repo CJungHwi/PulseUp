@@ -10,6 +10,7 @@
  * 관련 컴포넌트(`./components/`): `ExerciseList`, `ExerciseForm`, `VimeoPlayerSection`.
  *
  * 흐름: 카테고리 로드 → 검색·페이지네이션으로 목록 → 폼에서 생성/수정 dispatch.
+ * 양쪽운동: `exercises.is_bilateral`을 마스터 기본값으로 저장하고 운동 등록 화면에서 개별 override 가능.
  */
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -74,6 +75,7 @@ const WorkoutManager: React.FC = () => {
     video_start_time: undefined as number | undefined,
     video_end_time: undefined as number | undefined,
     video_loop_count: undefined as number | undefined,
+    is_bilateral: false,
     is_active: true,
     workout_category_id: '',
     major_category: ''
@@ -141,7 +143,7 @@ const WorkoutManager: React.FC = () => {
       characteristics: '', equipment: '', purpose: '', video_url: '',
       thumbnail_url: '', video_title: '', video_duration: undefined,
       video_start_time: undefined, video_end_time: undefined,
-      video_loop_count: undefined, is_active: true, workout_category_id: '', major_category: ''
+      video_loop_count: undefined, is_bilateral: false, is_active: true, workout_category_id: '', major_category: ''
     })
     setVideoInfo({ url: '' })
     setIsEditing(false)
@@ -181,6 +183,7 @@ const WorkoutManager: React.FC = () => {
       video_start_time: exercise.video_start_time,
       video_end_time: exercise.video_end_time,
       video_loop_count: exercise.video_loop_count,
+      is_bilateral: !!exercise.is_bilateral,
       is_active: exercise.is_active,
       workout_category_id: resolvedWorkoutCategoryId,
       major_category: exercise.major_category || ''
@@ -241,6 +244,7 @@ const WorkoutManager: React.FC = () => {
       video_start_time: undefined,
       video_end_time: undefined,
       video_loop_count: undefined,
+      is_bilateral: false,
       is_active: true,
       workout_category_id: '',
       major_category: ''

@@ -1,7 +1,9 @@
 /**
  * WorkoutEditor - 일자별 트레이닝 등록/편집 패널
  * - 운동 목록: 행 전체 드래그 → 행 사이 드롭 슬롯에 놓으면 순서 변경 (onReorderExercise)
- * - Main 탭: AMRAP 및 MAIN/EMOM stress/loop 서킷에서 운동별 횟수(reps) 편집
+ * - Main 탭: AMRAP 및 MAIN/EMOM/COMBO stress/loop 서킷에서 운동별 횟수(reps) 편집
+ * - 양쪽운동: 운동 마스터 기본값을 가져오되 일자별 운동 구성에서 행 단위로 Y/N 재설정
+ * - COMBO: 목록 순서 1·4·7…→운동설정 1번 횟수, 2·5·8…→2번, 3·6·9…→3번 (comboRepsHelper)
  * - 이미지 설정 탭: 일자별 운동 기록 모니터 표시 (WorkoutMonitorDisplayPanel)
  */
 import React from 'react'
@@ -64,6 +66,10 @@ import { cn } from '@/lib/utils'
 import { Exercise, PanelRow, WorkoutMaster, WorkoutTimeSummary } from './types'
 import { VimeoFitIframe } from '../../../../components/VimeoFitIframe/VimeoFitIframe'
 import { WorkoutMonitorDisplayPanel } from './WorkoutMonitorDisplayPanel'
+import { ComboRoundPanel } from './ComboRoundPanel'
+import { COMBO_REPS_GUIDE_TEXT } from './comboRepsHelper'
+import { isComboMajorCategory } from '../../shared/workoutSettingBridge'
+import { COMBO_GROUP_SIZE } from '../../shared/saveWorkout'
 import type { MonitorDisplayProfileState } from '@/pages/WorkoutSettings/components/MonitorDisplayTabs'
 
 interface WorkoutEditorProps {
@@ -88,6 +94,7 @@ interface WorkoutEditorProps {
     onReorderExercise: (fromIndex: number, toIndex: number, listType: 'main' | 'dynamic' | 'cooldown') => void
     onDurationChange: (id: string, duration: number, listType: 'main' | 'dynamic' | 'cooldown') => void
     onRepsChange: (id: string, reps: number) => void
+    onBilateralChange: (id: string, checked: boolean, listType: 'main' | 'dynamic' | 'cooldown') => void
 
     // Panels
     panelRows: PanelRow[]
@@ -97,8 +104,8 @@ interface WorkoutEditorProps {
     onCircuitTypeChange: (type: string) => void
     onAddPanelRow: () => void
     onRemovePanelRow: () => void
-    onPanelTimeChange: (rowId: string, field: 'time' | 'rest' | 'waterBreak', increment: boolean) => void
-    onPanelTimeDirectChange: (rowId: string, field: 'time' | 'rest' | 'waterBreak', value: number) => void
+    onPanelTimeChange: (rowId: string, field: 'time' | 'rest' | 'waterBreak' | 'reps', increment: boolean) => void
+    onPanelTimeDirectChange: (rowId: string, field: 'time' | 'rest' | 'waterBreak' | 'reps', value: number) => void
     onPanelExerciseSelect: (rowId: string) => void
     panelWidth: number
     onDraggingPanel: (e: React.MouseEvent) => void
@@ -168,6 +175,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
     onReorderExercise,
     onDurationChange,
     onRepsChange,
+    onBilateralChange,
     panelRows,
     selectedPanelRowId,
     setSelectedPanelRowId,
@@ -225,6 +233,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
         targetMuscles: 120,
         characteristics: 300,
         equipment: 120,
+        bilateral: 80,
         delete: 60,
     }
     const [colWidths, setColWidths] = React.useState<Record<string, number>>(DEFAULT_COL_WIDTHS)
@@ -340,21 +349,27 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
     const isMainStressOrLoop =
         majorCategory === 'MAIN' &&
         (circuitType === 'stress' || circuitType === 'loop')
+    const isCombo = isComboMajorCategory(majorCategory) || isComboMajorCategory(rightExerciseType)
     const isAMRAPorEMOM = majorUpper === 'AMRAP' || majorUpper === 'EMOM' || rightUpper === 'AMRAP' || rightUpper === 'EMOM'
-    const isCircuitTypeSelectable = rightExerciseType === 'MAIN' || majorUpper === 'EMOM' || rightUpper === 'EMOM'
+    const isCircuitTypeSelectable =
+        rightExerciseType === 'MAIN' || majorUpper === 'EMOM' || rightUpper === 'EMOM' || isCombo
     /** MAIN stress/loop - AMRAP/EMOM 과 동일하게 운동별 횟수 컬럼 표시 */
     const isMainStressOrLoopReps =
         majorUpper === 'MAIN' &&
         rightUpper !== 'AMRAP' &&
         rightUpper !== 'EMOM' &&
         (circuitType === 'stress' || circuitType === 'loop')
-    const showMainRepsColumn = isAMRAPorEMOM || isMainStressOrLoopReps
+    const showMainRepsColumn = isAMRAPorEMOM || isMainStressOrLoopReps || isCombo
     const isAMRAPOnly = majorUpper === 'AMRAP' || rightUpper === 'AMRAP'
     const isMainSaveBlocked =
         enforceMainExerciseCount &&
         majorUpper === 'MAIN' &&
         exercises.length !== 6 &&
         exercises.length !== 12
+    const isComboSaveBlocked =
+        enforceMainExerciseCount &&
+        isCombo &&
+        (exercises.length < COMBO_GROUP_SIZE || exercises.length % COMBO_GROUP_SIZE !== 0)
 
     function renderValueEditor(ex: Exercise, listType: 'main' | 'dynamic' | 'cooldown') {
         const isMain = listType === 'main'
@@ -513,7 +528,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
         const effectiveShowValueColumn =
             (activeTab !== 'all' && showValueColumn) ||
             (activeTab === 'all' && showMainRepsColumn)
-        const emptyColSpan = effectiveShowValueColumn ? 8 : 7
+        const emptyColSpan = effectiveShowValueColumn ? 9 : 8
 
         const resolveReorderTargetIndex = (fromIndex: number, insertIndex: number) => {
             let targetIndex = insertIndex
@@ -645,6 +660,10 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                             필요기구
                             <ResizeHandle col="equipment" />
                         </ShadcnTableHead>
+                        <ShadcnTableHead className={headCellClass} style={{ width: colWidths.bilateral }}>
+                            양쪽
+                            <ResizeHandle col="bilateral" />
+                        </ShadcnTableHead>
 
                         <ShadcnTableHead className="h-[45px] px-2 text-xs font-bold text-center border-b-0 bg-[#b9adb5] dark:bg-gray-800 text-[#27272a] dark:text-[#94a3b8] sticky right-0 z-30 shadow-[-2px_0_5px_rgba(0,0,0,0.1)]" style={{ width: colWidths.delete }}>삭제</ShadcnTableHead>
                     </ShadcnTableRow>
@@ -703,6 +722,18 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                                     <ShadcnTableCell className="h-[35px] py-0 px-2 text-xs text-center border-r border-[#343637] dark:border-[#6b7280] truncate text-muted-foreground group-hover:text-inherit transition-colors">
                                         {ex.equipment || '-'}
                                     </ShadcnTableCell>
+                                    <ShadcnTableCell
+                                        data-row-drag-disabled
+                                        className="h-[35px] py-0 px-2 text-xs text-center border-r border-[#343637] dark:border-[#6b7280] group-hover:text-inherit transition-colors"
+                                    >
+                                        <Checkbox
+                                            checked={!!ex.is_bilateral}
+                                            onCheckedChange={(checked) => onBilateralChange(ex.id, checked === true, listType)}
+                                            onClick={(event) => event.stopPropagation()}
+                                            aria-label={`${ex.name_ko || ex.name_en || '운동'} 양쪽운동 여부`}
+                                            className="mx-auto"
+                                        />
+                                    </ShadcnTableCell>
 
                                     <ShadcnTableCell
                                         data-row-drag-disabled
@@ -737,6 +768,11 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                     일자별 메인 트레이닝 등록
                 </CardTitle>
             </CardHeader>
+            {isCombo ? (
+                <div className="px-4 py-2 border-b border-[#343637] dark:border-[#6b7280] bg-primary/5 text-xs text-muted-foreground leading-relaxed">
+                    {COMBO_REPS_GUIDE_TEXT}
+                </div>
+            ) : null}
             {/* Toolbar (상단 고정) */}
             <div className="p-4 border-b border-[#343637] dark:border-[#6b7280] bg-[#f9fafb]/50 dark:bg-muted/20 flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4 flex-wrap">
@@ -835,12 +871,15 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                         className="h-9"
                         disabled={
                             (exercises.length === 0 && dynamicExercises.length === 0 && coolDownExercises.length === 0) ||
-                            isMainSaveBlocked
+                            isMainSaveBlocked ||
+                            isComboSaveBlocked
                         }
                         title={
                             isMainSaveBlocked
                                 ? 'MAIN 저장 시 메인 운동은 6개 또는 12개여야 합니다'
-                                : undefined
+                                : isComboSaveBlocked
+                                  ? `COMBO 저장 시 메인 운동은 ${COMBO_GROUP_SIZE}개 단위(3, 6, 9…)여야 합니다`
+                                  : undefined
                         }
                     >
                         <Save className="h-4 w-4 mr-2" /> 저장
@@ -856,6 +895,17 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                     style={{ width: `${panelWidth}%` }}
                 >
                     {/* Round/Panel Card */}
+                    {isCombo ? (
+                        <ComboRoundPanel
+                            panelRows={panelRows}
+                            selectedPanelRowId={selectedPanelRowId}
+                            circuitType={circuitType}
+                            onCircuitTypeChange={onCircuitTypeChange}
+                            onSelectRow={setSelectedPanelRowId}
+                            onPanelTimeChange={onPanelTimeChange}
+                            onPanelTimeDirectChange={onPanelTimeDirectChange}
+                        />
+                    ) : (
                     <Card className="flex flex-[3.3] min-h-0 flex-col overflow-hidden border border-[#343637] dark:border-[#6b7280] shadow-md">
                         <CardHeader className="h-10 shrink-0 px-3 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0 border-[#343637] dark:border-[#6b7280]">
                             {isCircuitTypeSelectable ? (
@@ -1032,6 +1082,7 @@ export const WorkoutEditor: React.FC<WorkoutEditorProps> = ({
                             </div>
                         </CardContent>
                     </Card>
+                    )}
 
                     {/* Memo Card */}
                     <Card className="flex flex-[1.7] min-h-0 flex-col overflow-hidden border border-[#343637] dark:border-[#6b7280] shadow-md">

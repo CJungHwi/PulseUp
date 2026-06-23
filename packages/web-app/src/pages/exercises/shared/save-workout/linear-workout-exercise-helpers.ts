@@ -102,6 +102,7 @@ export const generateWorkoutExercisesLinear = (
                     duration: row.time,
                     position: ex.position || null,
                     reps: ex.reps ?? 0,
+                    is_bilateral: !!ex.is_bilateral,
                 })
 
                 const isLastSet = setIndex === panelRows.length - 1
@@ -150,6 +151,7 @@ export const generateWorkoutExercisesLinear = (
                 duration: row.time,
                 position: ex.position || null,
                 reps: ex.reps ?? 0,
+                is_bilateral: !!ex.is_bilateral,
             })
 
             const isLastExerciseInRound = exIndex === sortedExercises.length - 1
@@ -203,6 +205,7 @@ export const generateEmomWorkoutExercisesLinear = (
                 name: ex.name_ko || ex.name_en || '운동',
                 duration: row.time,
                 reps: ex.reps ?? 0,
+                is_bilateral: !!ex.is_bilateral,
                 position: ex.position || null,
             })
         })
@@ -243,6 +246,7 @@ export const generateEmomStressWorkoutExercisesLinear = (
                 name: ex.name_ko || ex.name_en || '운동',
                 duration: row.time,
                 reps: ex.reps ?? 0,
+                is_bilateral: !!ex.is_bilateral,
                 position: ex.position || null,
             })
 
@@ -323,6 +327,7 @@ export const generateWorkoutExercisesForTimeStructuredLinear = (
                     name: ex.name_ko || ex.name_en || '운동',
                     duration: row.time * 60,
                     reps: ex.reps || 0,
+                    is_bilateral: !!ex.is_bilateral,
                     position: ex.position || null,
                 })
             })

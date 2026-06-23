@@ -8,7 +8,10 @@ import {
   resolveIntroFocusForMonitor,
   type IntroFocusTarget,
 } from '../circuits/intro-position-codes.js'
-import { normalizeGridPosition } from '../../common/grid-position-codes.js'
+import {
+  applyCircuitHalfSwap,
+  normalizeGridPosition,
+} from '../../common/grid-position-codes.js'
 import { clearAllWorkoutGridVideoCells, clearWorkoutGridVideoByPosition } from './workout-grid-cell-cleanup.js'
 import { buildWorkoutGridShellHtml } from './workout-grid-display-shell.js'
 import {
@@ -46,8 +49,11 @@ export class WorkoutGridDisplay {
   private readonly preloadStore: WorkoutGridPreloadStore
   private readonly attachVimeoPlayerHandlers: AttachVimeoHandlersFn
   private circuitType: WorkoutCircuitType = 'stress'
+  private methodType: string | null = null
   private lastCategoryLabelSource = ''
   private isIntroLayout = false
+  /** 5분할(패널) 레이아웃 여부 — 5분할은 좌→우 A,B,C,D 직배치라 B↔C 역스왑을 적용하지 않는다 */
+  private isFiveScreenLayout = false
   private introFocusState: IntroFocusRuntimeState | null = null
 
   constructor(container: HTMLElement, side: WorkoutGridSide) {
@@ -184,9 +190,14 @@ export class WorkoutGridDisplay {
 
   private updatePositionLabel(slot: number, position: string) {
     const prefix = sidePrefix(this.side)
+    // amrap/emom 3분할은 내부적으로 B↔C 스왑된 position 으로 렌더되므로, 화면 라벨은 원복(작성 코드)으로 표시.
+    // 5분할은 스왑하지 않으므로 역스왑도 적용하지 않는다.
+    const authoredPosition = this.isFiveScreenLayout
+      ? position
+      : applyCircuitHalfSwap(position, this.circuitType)
     const displayPosition = this.isIntroLayout
-      ? internalPositionToDisplayCode(position, this.side)
-      : position
+      ? internalPositionToDisplayCode(authoredPosition, this.side)
+      : authoredPosition
     const overlayId = `position-overlay-${prefix}${slot}`
     const overlayElement = document.getElementById(overlayId)
     if (overlayElement) {
@@ -197,8 +208,19 @@ export class WorkoutGridDisplay {
     this.updateCategoryLabel(position)
   }
 
-  setCircuitType(ct: string | undefined) {
+  setFiveScreenLayout(value: boolean) {
+    this.isFiveScreenLayout = value
+  }
+
+  setCircuitType(ct: string | undefined, method?: string | null) {
     const val = normalizePanelCircuitType(ct)
+    const nextMethod = method ? String(method).toLowerCase() : null
+    if (this.methodType !== nextMethod) {
+      this.methodType = nextMethod
+      if (this.lastCategoryLabelSource) {
+        this.updateCategoryLabel(this.lastCategoryLabelSource)
+      }
+    }
     if (!val) return
     if (this.circuitType === val) return
     this.circuitType = val
@@ -211,7 +233,7 @@ export class WorkoutGridDisplay {
     this.lastCategoryLabelSource = positionOrLabel || ''
     const categoryEl = document.getElementById(`category-label-${this.side}`)
     if (!categoryEl) return
-    categoryEl.textContent = getGridCategoryDisplayName(this.circuitType, positionOrLabel)
+    categoryEl.textContent = getGridCategoryDisplayName(this.circuitType, positionOrLabel, this.methodType)
     this.fitLabelToContainer(categoryEl)
   }
 
@@ -271,11 +293,31 @@ export class WorkoutGridDisplay {
     const badgeId = `reps-badge-${prefix}${slot}`
     const badge = document.getElementById(badgeId)
     if (!badge) return
-    const reps = sequence.reps || 0
-    if (reps > 0) {
-      badge.innerHTML =
-        `<div style="font-size: 30px; letter-spacing: 2px;">REPS</div>` +
-        `<div style="font-size: 60px;">${reps}</div>`
+    const reps = Number(
+      sequence.reps ??
+        sequence.rep_count ??
+        sequence.reps_count ??
+        sequence.repeat_count ??
+        sequence.repetitions ??
+        0,
+    )
+    const isBilateral = sequence.is_bilateral === true || sequence.is_bilateral === 1 || sequence.is_bilateral === '1' || String(sequence.is_bilateral || '').toUpperCase() === 'Y'
+    if (reps > 0 || isBilateral) {
+      const repsHtml = reps > 0
+        ? `<div style="font-size: 30px; letter-spacing: 2px;">REPS</div><div style="font-size: 60px;">${reps}</div>`
+        : ''
+      const bilateralHtml = isBilateral
+        ? `<div style="
+            margin-top: 4px;
+            font-size: 34px;
+            color: #FFD400;
+            letter-spacing: 1px;
+            -webkit-text-stroke: 1.5px #000;
+            text-shadow: 0 0 8px #000, 0 0 14px rgba(0,0,0,0.9);
+            white-space: nowrap;
+          ">(양쪽)</div>`
+        : ''
+      badge.innerHTML = repsHtml + bilateralHtml
       badge.style.display = 'block'
     } else {
       badge.style.display = 'none'

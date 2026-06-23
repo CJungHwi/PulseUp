@@ -1,7 +1,7 @@
 /**
  * 페이지 요약 - 운동/모니터 설정 (`/workout-settings`)
  *
- * 기능: MAIN-STRESS/MAIN-LOOP/AMRAP/EMOM-STRESS/EMOM-LOOP별 시간표 설정, 모니터 표시(기본/인트로 이미지 좌·중·우, 영상앱 문자).
+ * 기능: MAIN-STRESS/MAIN-LOOP/AMRAP/EMOM-STRESS/EMOM-LOOP/COMBO-STRESS/COMBO-LOOP별 시간표 설정, 모니터 표시(기본/인트로 이미지 좌·중·우, 영상앱 문자).
  *
  * 호출/연동:
  * - `GET|PUT /workout-categories/workout-setting/:methodType`
@@ -22,8 +22,10 @@ import { WorkoutMethodSettingsCard } from './components/WorkoutMethodSettingsCar
 import { MonitorDisplayTabs } from './components/MonitorDisplayTabs'
 import { useMonitorDisplaySettings } from './components/useMonitorDisplaySettings'
 import {
+  COMBO_ROW_COUNT,
   DEFAULT_ROWS,
   METHOD_LABELS,
+  isComboMethod,
   isEmomMethod,
   isTimeStructuredMethod,
   type MethodType,
@@ -31,7 +33,15 @@ import {
   type WorkoutSettingRow
 } from './components/workoutSettingsModel'
 
-const WORKOUT_SETTING_METHODS: MethodType[] = ['stress', 'loop', 'AMRAP', 'EMOM-STRESS', 'EMOM-LOOP']
+const WORKOUT_SETTING_METHODS: MethodType[] = [
+  'stress',
+  'loop',
+  'AMRAP',
+  'EMOM-STRESS',
+  'EMOM-LOOP',
+  'COMBO-STRESS',
+  'COMBO-LOOP'
+]
 
 const WorkoutSettings: React.FC = () => {
   const { showSnackbar } = useSnackbar()
@@ -44,7 +54,9 @@ const WorkoutSettings: React.FC = () => {
     loop: DEFAULT_ROWS.loop,
     AMRAP: DEFAULT_ROWS.AMRAP,
     'EMOM-STRESS': DEFAULT_ROWS['EMOM-STRESS'],
-    'EMOM-LOOP': DEFAULT_ROWS['EMOM-LOOP']
+    'EMOM-LOOP': DEFAULT_ROWS['EMOM-LOOP'],
+    'COMBO-STRESS': DEFAULT_ROWS['COMBO-STRESS'],
+    'COMBO-LOOP': DEFAULT_ROWS['COMBO-LOOP']
   })
   const [isSavingSetting, setIsSavingSetting] = useState(false)
 
@@ -72,10 +84,15 @@ const WorkoutSettings: React.FC = () => {
   }, [])
 
   const currentRows = settingsByMethod[selectedMethod]
+  const isCombo = isComboMethod(selectedMethod)
   const isWaterBreakLastRowOnly =
     selectedMethod === 'stress' || selectedMethod === 'loop' || isEmomMethod(selectedMethod)
+  const isTimeRestLastRowOnly = isCombo
 
   const handleCellDirectChange = (index: number, field: keyof WorkoutSettingRow, value: number) => {
+    if (field === 'time' || field === 'rest') {
+      if (isTimeRestLastRowOnly && index !== currentRows.length - 1) return
+    }
     if (field === 'waterBreak' && isWaterBreakLastRowOnly && index !== currentRows.length - 1) return
     if (Number.isNaN(value)) return
     setSettingsByMethod((prev) => {
@@ -86,6 +103,9 @@ const WorkoutSettings: React.FC = () => {
   }
 
   const handleCellAdjust = (index: number, field: keyof WorkoutSettingRow, delta: number) => {
+    if (field === 'time' || field === 'rest') {
+      if (isTimeRestLastRowOnly && index !== currentRows.length - 1) return
+    }
     if (field === 'waterBreak' && isWaterBreakLastRowOnly && index !== currentRows.length - 1) return
     setSettingsByMethod((prev) => {
       const nextRows = [...prev[selectedMethod]]
@@ -96,6 +116,10 @@ const WorkoutSettings: React.FC = () => {
   }
 
   const handleAddRow = () => {
+    if (isCombo) {
+      showSnackbar({ message: '콤보운동은 운동 3개(Row 3개)로 고정됩니다', severity: 'warning' })
+      return
+    }
     const prevRows = settingsByMethod[selectedMethod]
     if (selectedMethod === 'AMRAP' && prevRows.length >= 2) {
       showSnackbar({ message: 'AMRAP은 Round를 최대 2개까지 지정할 수 있습니다', severity: 'warning' })
@@ -127,6 +151,10 @@ const WorkoutSettings: React.FC = () => {
   }
 
   const handleRemoveRow = () => {
+    if (isCombo) {
+      showSnackbar({ message: '콤보운동은 운동 3개(Row 3개)로 고정됩니다', severity: 'warning' })
+      return
+    }
     setSettingsByMethod((prev) => {
       const prevRows = prev[selectedMethod]
       if (prevRows.length <= 1) return prev
@@ -149,6 +177,7 @@ const WorkoutSettings: React.FC = () => {
       setIsSavingSetting(true)
       const isAmrapEmom = isTimeStructuredMethod(selectedMethod)
       const payloadRows = currentRows.map((row, index) => {
+        let time = row.time
         let rest = row.rest
         let waterBreak = row.waterBreak
         if (isAmrapEmom) {
@@ -158,6 +187,12 @@ const WorkoutSettings: React.FC = () => {
           } else {
             waterBreak = row.waterBreak * 60
           }
+        } else if (isComboMethod(selectedMethod)) {
+          if (index < currentRows.length - 1) {
+            time = 0
+            rest = 0
+          }
+          waterBreak = 0
         } else if (
           (selectedMethod === 'stress' || selectedMethod === 'loop') &&
           index < currentRows.length - 1
@@ -166,7 +201,7 @@ const WorkoutSettings: React.FC = () => {
         }
         return {
           round: index + 1,
-          time: row.time,
+          time,
           rest,
           waterBreak,
           reps: row.reps,
@@ -204,7 +239,10 @@ const WorkoutSettings: React.FC = () => {
           onMethodChange={setSelectedMethod}
           currentRows={currentRows}
           isTimeStructured={isTimeStructured}
+          isCombo={isCombo}
+          comboRowCount={COMBO_ROW_COUNT}
           isWaterBreakLastRowOnly={isWaterBreakLastRowOnly}
+          isTimeRestLastRowOnly={isTimeRestLastRowOnly}
           onCellDirectChange={handleCellDirectChange}
           onCellAdjust={handleCellAdjust}
           onAddRow={handleAddRow}

@@ -1,8 +1,10 @@
 /**
  * MonthProgramMasterTabs — 사용자 / 관리자 마스터 테이블 탭
+ *
+ * 좌측 기록 DataTable: 날짜 · 운동저장구분 · 운동구분 · 서킷 · 메모
  */
 
-import React from 'react'
+import React, { useMemo } from 'react'
 import dayjs from 'dayjs'
 import {
   Tabs as ShadcnTabs,
@@ -19,23 +21,41 @@ import {
   TableRow as ShadcnTableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import type { WorkoutScopeRecord } from '@/pages/exercises/shared/workoutScope'
 import type { WorkoutMaster } from './monthProgramTypes'
 
 interface MasterTableProps {
   rows: WorkoutMaster[]
   selectedMasterId: string | null
   onRowClick: (master: WorkoutMaster) => void
+  scopeLabels: Record<string, string>
 }
 
-const MasterTable: React.FC<MasterTableProps> = ({ rows, selectedMasterId, onRowClick }) => (
+const resolveScopeLabel = (
+  scopeCode: string | undefined,
+  scopeLabels: Record<string, string>,
+): string => {
+  if (!scopeCode) return '-'
+  return scopeLabels[scopeCode.toUpperCase()] ?? scopeLabels[scopeCode] ?? scopeCode
+}
+
+const MasterTable: React.FC<MasterTableProps> = ({
+  rows,
+  selectedMasterId,
+  onRowClick,
+  scopeLabels,
+}) => (
   <div className="flex-1 min-h-0 overflow-auto relative bg-[#f9fafb] dark:bg-[#1d1d1d] border border-[#343637] dark:border-[#6b7280] border-t-0 overscroll-behavior-contain touch-pan-y">
     <ShadcnTable className="w-full table-fixed border-separate border-spacing-0">
       <ShadcnTableHeader className="sticky top-0 z-10 bg-[#b9adb5] dark:bg-gray-800">
         <ShadcnTableRow className="hover:bg-transparent border-b-0 h-[45px]">
-          <ShadcnTableHead className="w-[120px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] text-xs text-[#27272a] dark:text-[#94a3b8]">
+          <ShadcnTableHead className="w-[110px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] text-xs text-[#27272a] dark:text-[#94a3b8]">
             날짜
           </ShadcnTableHead>
-          <ShadcnTableHead className="w-[150px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] text-xs text-[#27272a] dark:text-[#94a3b8]">
+          <ShadcnTableHead className="w-[100px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] text-xs text-[#27272a] dark:text-[#94a3b8]">
+            운동저장구분
+          </ShadcnTableHead>
+          <ShadcnTableHead className="w-[130px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] text-xs text-[#27272a] dark:text-[#94a3b8]">
             운동구분
           </ShadcnTableHead>
           <ShadcnTableHead className="w-[100px] text-center font-bold px-2 border-b-0 border-r border-[#343637] dark:border-[#6b7280] text-xs text-[#27272a] dark:text-[#94a3b8]">
@@ -58,6 +78,12 @@ const MasterTable: React.FC<MasterTableProps> = ({ rows, selectedMasterId, onRow
           >
             <ShadcnTableCell className="h-[35px] py-0 px-2 text-center border-r border-[#343637] dark:border-[#6b7280] text-xs group-hover:text-inherit transition-colors">
               {row.date ? dayjs(row.date).format('YYYY-MM-DD') : '-'}
+            </ShadcnTableCell>
+            <ShadcnTableCell
+              className="h-[35px] py-0 px-2 text-center border-r border-[#343637] dark:border-[#6b7280] text-xs truncate group-hover:text-inherit transition-colors"
+              title={resolveScopeLabel(row.workoutScope, scopeLabels)}
+            >
+              {resolveScopeLabel(row.workoutScope, scopeLabels)}
             </ShadcnTableCell>
             <ShadcnTableCell className="h-[35px] py-0 px-2 text-center border-r border-[#343637] dark:border-[#6b7280] text-xs truncate group-hover:text-inherit transition-colors">
               {row.workoutCategoriesName}
@@ -90,6 +116,7 @@ interface MonthProgramMasterTabsProps {
   adminWorkoutMasters: WorkoutMaster[]
   selectedMasterId: string | null
   onRowClick: (master: WorkoutMaster) => void
+  workoutScopes: WorkoutScopeRecord[]
 }
 
 export const MonthProgramMasterTabs: React.FC<MonthProgramMasterTabsProps> = ({
@@ -100,7 +127,14 @@ export const MonthProgramMasterTabs: React.FC<MonthProgramMasterTabsProps> = ({
   adminWorkoutMasters,
   selectedMasterId,
   onRowClick,
-}) => (
+  workoutScopes,
+}) => {
+  const scopeLabels = useMemo(
+    () => Object.fromEntries(workoutScopes.map((s) => [s.scopeCode, s.scopeName])),
+    [workoutScopes],
+  )
+
+  return (
   <ShadcnTabs
     value={recordTabValue.toString()}
     onValueChange={(val) => onTabChange(parseInt(val))}
@@ -126,6 +160,7 @@ export const MonthProgramMasterTabs: React.FC<MonthProgramMasterTabsProps> = ({
         rows={workoutMasters}
         selectedMasterId={selectedMasterId}
         onRowClick={onRowClick}
+        scopeLabels={scopeLabels}
       />
     </TabsContent>
 
@@ -134,7 +169,9 @@ export const MonthProgramMasterTabs: React.FC<MonthProgramMasterTabsProps> = ({
         rows={adminWorkoutMasters}
         selectedMasterId={selectedMasterId}
         onRowClick={onRowClick}
+        scopeLabels={scopeLabels}
       />
     </TabsContent>
   </ShadcnTabs>
-)
+  )
+}

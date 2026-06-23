@@ -18,6 +18,7 @@ BEGIN
         we.exercise_name,
         we.duration,
         COALESCE(we.reps, 0) as reps, -- reps 필드 추가 (NULL이면 0)
+        COALESCE(we.is_bilateral, e.is_bilateral, 0) as is_bilateral,
         we.position,
         e.name_ko,
         e.name_en,
@@ -36,11 +37,11 @@ BEGIN
         -- major_category는 기본적으로 운동(exercises)의 카테고리를 따르지만,
         -- AMRAP/EMOM 저장 데이터는 '메서드(운동 타입)' 구분이 필요하므로 MAIN 구간(DS/CD 제외)은 마스터 기준으로 오버라이드
         CASE
-          WHEN whm.workout_categories_id IN ('AMRAP', 'EMOM') AND we.round NOT IN (0, 99) THEN whm.workout_categories_id
+          WHEN whm.workout_categories_id IN ('AMRAP', 'EMOM', 'COMBO') AND we.round NOT IN (0, 99) THEN whm.workout_categories_id
           ELSE wc.major_category
         END AS major_category,
         CASE
-          WHEN whm.workout_categories_id IN ('AMRAP', 'EMOM') AND we.round NOT IN (0, 99) THEN whm.workout_categories_id
+          WHEN whm.workout_categories_id IN ('AMRAP', 'EMOM', 'COMBO') AND we.round NOT IN (0, 99) THEN whm.workout_categories_id
           ELSE wc.major_category_name
         END AS major_category_name,
         we.created_at,

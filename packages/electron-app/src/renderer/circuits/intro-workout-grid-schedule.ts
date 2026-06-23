@@ -3,8 +3,7 @@ import type { DisplayType } from '../renderer-display-types.js'
 import { isIntroGridPositionForDisplay } from './intro-position-codes.js'
 
 /**
- * 인트로 IPC: 좌측 모니터 A1~A6, 우측 모니터 B1~B6 stagger 재생
- * - 각 모니터 2열: num 1–3 좌열, 4–6 우열
+ * 인트로 IPC: 3모니터 좌 A/B·우 C/D, 5모니터 좌부터 A/B/C/D stagger 재생
  */
 export const scheduleIntroSequencesForMonitor = (
   grid: WorkoutGridDisplay,

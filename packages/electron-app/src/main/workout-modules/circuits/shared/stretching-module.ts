@@ -87,7 +87,7 @@ export class StretchingModule implements WorkoutModule {
   }
 
   /**
-   * Loop/EMOM에서 후반전(B*) 운동은 전반전(A*)과 다른 라운드에 저장되므로,
+   * Loop/EMOM에서 후반전(C/D) 운동은 전반전(A/B)과 다른 라운드에 저장되므로,
    * round 1 group 1 으로는 선로딩이 안 됨 → 첫 후반전 라운드를 찾아 반환.
    */
   private findFirstBackHalfRound(ctx: WorkoutModuleContext): number | null {

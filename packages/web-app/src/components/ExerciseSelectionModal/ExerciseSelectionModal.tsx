@@ -4,7 +4,7 @@
  * - API: getExercisesList, exerciseFavoriteApi (sp_GetUserExerciseFavorites, sp_ToggleUserExerciseFavorite)
  * - Components: ExerciseFavoriteStar, VimeoFitIframe
  * - 흐름: 카테고리/검색 → 목록 표시 → 체크 선택 + 즐겨찾기 → 선택추가 → 확인
- * - 선택된 운동 목록: 순서를 위치 라벨로 표시 (grid: A1~B6, linear: 1,2,3…),
+ * - 선택된 운동 목록: 순서를 위치 라벨로 표시 (grid: A1~A3/B1~B3/C1~C3/D1~D3, linear: 1,2,3…),
  *   WorkoutEditor 와 동일한 행 드래그 앤 드롭으로 순서 변경(드롭 시 위치 재할당)
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
@@ -77,7 +77,11 @@ import { EXERCISE_LEVEL_LABELS, ExerciseLevel } from '../../types/workoutCategor
 import { VimeoFitIframe } from '../VimeoFitIframe/VimeoFitIframe';
 import { ExerciseFavoriteStar } from './ExerciseFavoriteStar';
 import { useExerciseFavorites } from './useExerciseFavorites';
-import { positionFromMainIndex } from '@/utils/gridPositionCodes';
+import {
+  MAIN_GRID_POSITION_ORDER,
+  normalizeGridPosition,
+  positionFromMainIndex,
+} from '@/utils/gridPositionCodes';
 import { positionFromSequentialIndex } from '@/pages/exercises/shared/sequencePositions';
 import type { SequenceMode } from '@/pages/exercises/shared/sequenceMode';
 
@@ -101,6 +105,7 @@ interface Exercise {
   video_start_time?: number
   video_end_time?: number
   video_loop_count?: number
+  is_bilateral?: boolean
   is_active: boolean
   major_category: string
   updated_at?: string
@@ -112,19 +117,16 @@ interface ExerciseSelectionModalProps {
   onExercisesSelected: (exercises: Exercise[]) => void
   selectedExercises?: Exercise[]
   defaultCategory?: string // 기본 운동구분 파라미터 추가
-  /** main-training 위치 라벨: grid(A/B) | linear(1,2,3…) — 기본 grid */
+  /** main-training 위치 라벨: grid(A/B/C/D) | linear(1,2,3…) — 기본 grid */
   sequenceMode?: SequenceMode
 }
 
 interface SelectedExerciseWithTime extends Exercise {
   selectedTime: number // 초 단위
-  position?: string // 운동 위치 (A1~A6, B1~B6)
+  position?: string // 운동 위치 (A1~A3, B1~B3, C1~C3, D1~D3)
 }
 
-const MAIN_POSITION_OPTIONS = [
-  'A1', 'A2', 'A3', 'A4', 'A5', 'A6',
-  'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
-]
+const MAIN_POSITION_OPTIONS = Array.from(MAIN_GRID_POSITION_ORDER)
 
 const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
   open,
@@ -220,6 +222,14 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
       return positionFromSequentialIndex(0)
     }
     return 'A1'
+  }
+
+  const normalizeSelectedPosition = (position: unknown, category: string): string => {
+    const fallback = getDefaultPosition(category)
+    const rawPosition = String(position || fallback)
+    if (isStretchingCategory(category) || isLinearMain) return rawPosition
+    const normalized = normalizeGridPosition(rawPosition)
+    return MAIN_POSITION_OPTIONS.includes(normalized) ? normalized : fallback
   }
 
   // Snackbar 상태
@@ -356,7 +366,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
         const initialExercises: SelectedExerciseWithTime[] = selectedExercises.map(ex => ({
           ...ex,
           selectedTime: ex.duration || (isStretchingCategory(defaultCategory) ? 20 : 0),
-          position: (ex as any).position || getDefaultPosition(defaultCategory),
+          position: normalizeSelectedPosition((ex as any).position, defaultCategory),
           // originalExerciseId가 없으면 id를 originalExerciseId로 설정 (id가 실제 운동 ID인 경우)
           originalExerciseId: ex.originalExerciseId || ex.id
         }))
@@ -454,6 +464,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
           video_start_time: exercise.video_start_time,
           video_end_time: exercise.video_end_time,
           video_loop_count: exercise.video_loop_count,
+          is_bilateral: !!exercise.is_bilateral,
           is_active: exercise.is_active,
           major_category: exercise.major_category,
           updated_at: exercise.updated_at
@@ -673,8 +684,12 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
       const positions = getPositionOptions(selectedCategory)
       const defaultPosition = getDefaultPosition(selectedCategory)
       const usedPositions = new Set([
-        ...tempSelectedExercises.map(ex => (ex as any).position).filter(Boolean),
-        ...parentSelectedExercises.map(ex => (ex as any).position).filter(Boolean)
+        ...tempSelectedExercises
+          .map(ex => normalizeSelectedPosition((ex as any).position, selectedCategory))
+          .filter(Boolean),
+        ...parentSelectedExercises
+          .map(ex => normalizeSelectedPosition((ex as any).position, selectedCategory))
+          .filter(Boolean)
       ])
 
       const exercisesWithTime: SelectedExerciseWithTime[] = selectedExercisesToAdd.map((exercise, addIndex) => {
@@ -846,7 +861,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
     onClose()
   }
 
-  // 선택된 운동 목록 순서 라벨 (Main grid: A1~B6, linear: 1,2,3…, DS DS1~, CD CD1~)
+  // 선택된 운동 목록 순서 라벨 (Main grid: A1~D3, linear: 1,2,3…, DS DS1~, CD CD1~)
   const getSelectedPositionLabel = (index: number): string => {
     if (selectedCategory === 'DS') return `DS${index + 1}`
     if (selectedCategory === 'CD') return `CD${index + 1}`
@@ -987,6 +1002,7 @@ const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
           video_start_time: exercise.video_start_time,
           video_end_time: exercise.video_end_time,
           video_loop_count: exercise.video_loop_count,
+          is_bilateral: !!exercise.is_bilateral,
           is_active: exercise.is_active,
           major_category: exercise.major_category,
           updated_at: exercise.updated_at

@@ -1,7 +1,7 @@
 /**
  * 컴포넌트 요약 — 리모컨 「선택보기」 탭
  *
- * 기능: 인트로 재생 중 A/B + 1~6 선택 후 보기/취소 명령 전송.
+ * 기능: 인트로 재생 중 A/B/C/D + 1~3 선택 후 보기/취소 명령 전송.
  *
  * 호출/연동:
  * - `deviceService.sendIntroFocus` / `sendIntroFocusCancel` → Electron `intro-focus` / `intro-focus-cancel`
@@ -66,7 +66,7 @@ export const IntroSelectViewPanel = ({
       return
     }
     if (!isIntroSelectionComplete(selection)) {
-      showSnackbar({ message: 'A/B와 1~6 번호를 모두 선택해주세요.', severity: 'warning' })
+      showSnackbar({ message: 'A/B/C/D와 1~3 번호를 모두 선택해주세요.', severity: 'warning' })
       return
     }
 
@@ -120,13 +120,13 @@ export const IntroSelectViewPanel = ({
         <div>
           <h2 className="text-lg font-semibold text-white mb-1">인트로 선택보기</h2>
           <p className="text-xs text-white/50">
-            인트로 재생 중 A/B와 번호를 고른 뒤 「보기」를 누르면 해당 영상이 Electron 하단 이미지 영역에서 크게 재생됩니다.
+            인트로 재생 중 A/B/C/D와 번호를 고른 뒤 「보기」를 누르면 해당 영상이 Electron 하단 이미지 영역에서 크게 재생됩니다.
           </p>
         </div>
 
         <div className="space-y-2">
-          <div className="text-sm text-white/70">1. 구역 선택 (A / B)</div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="text-sm text-white/70">1. 구역 선택 (A / B / C / D)</div>
+          <div className="grid grid-cols-4 gap-2">
             {INTRO_ZONES.map((zone) => (
               <Button
                 key={zone}
@@ -150,7 +150,7 @@ export const IntroSelectViewPanel = ({
         </div>
 
         <div className="space-y-2">
-          <div className="text-sm text-white/70">2. 번호 선택 (1 ~ 6)</div>
+          <div className="text-sm text-white/70">2. 번호 선택 (1 ~ 3)</div>
           <div className="grid grid-cols-3 gap-2">
             {INTRO_NUMBERS.map((number) => (
               <Button
@@ -207,7 +207,7 @@ export const IntroSelectViewPanel = ({
         </div>
 
         <p className="text-[11px] text-white/40 leading-relaxed">
-          A/B는 전반·후반, 1~3은 좌측 모니터, 4~6은 우측 모니터입니다.
+          A/B는 좌측 1·2열, C/D는 우측 1·2열이며 번호는 각 열의 1~3 슬롯입니다.
         </p>
       </CardContent>
     </Card>

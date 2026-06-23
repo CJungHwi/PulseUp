@@ -8,7 +8,7 @@
  * - `branchApi.getBranches` → 가입 지점 목록 조회.
  *
  * 관련 컴포넌트(`./components/`):
- * - `AuthPageShell`: 인증 화면 공통 레이아웃/브랜드 영역
+ * - `AuthPageShell`: 인증 화면 공통 레이아웃/브랜드 영역 (테마별 PULSE 로고)
  * - `RegisterForm`: 회원가입 입력 폼
  *
  * 흐름: 지점 조회 → 검증 → 지점 미선택 시 지점관리자 가입 확인 → 등록 API → 성공 시 `/login`으로 이동.
@@ -16,9 +16,11 @@
 
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTheme } from '../../contexts/ThemeContext'
 import { authService, RegisterRequest } from '../../services/auth.service'
 import { branchApi } from '../../services/branchApi'
 import type { Branch } from '../../types/branch'
+import { getPulseBrandLogoSrc } from './components/authBrandAssets'
 import { AuthPageShell } from './components/AuthPageShell'
 import { RegisterForm, type RegisterFormState } from './components/RegisterForm'
 
@@ -33,6 +35,7 @@ const createInitialRegisterForm = (): RegisterFormState => ({
 
 export const Register: React.FC = () => {
   const navigate = useNavigate()
+  const { mode } = useTheme()
   const [formData, setFormData] = useState<RegisterFormState>(createInitialRegisterForm)
   const [loading, setLoading] = useState(false)
   const [checkingUserId, setCheckingUserId] = useState(false)
@@ -149,7 +152,7 @@ export const Register: React.FC = () => {
   }
 
   return (
-    <AuthPageShell logoMaxWidth="180px">
+    <AuthPageShell logoSrc={getPulseBrandLogoSrc(mode)} logoMaxWidth="180px">
       <RegisterForm
         formData={formData}
         branches={branches}

@@ -1,5 +1,5 @@
 /**
- * UserManagementFilterBar — 검색/역할 필터/새로고침/사용자 추가
+ * UserManagementFilterBar — 검색/역할·지점 필터/새로고침/사용자 추가
  *
  * 사용처: `UserManagement.tsx`
  */
@@ -15,12 +15,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { BranchFilterSelect, type BranchFilterOption } from './BranchFilterSelect'
 
 interface UserManagementFilterBarProps {
   searchTerm: string
   onSearchTermChange: (value: string) => void
   roleFilter: string
   onRoleFilterChange: (value: string) => void
+  branchFilter: string
+  onBranchFilterChange: (value: string) => void
+  branches: BranchFilterOption[]
+  branchesLoading?: boolean
+  showBranchFilter?: boolean
   loading: boolean
   isBranchAdmin: boolean
   onRefresh: () => void
@@ -32,6 +38,11 @@ export const UserManagementFilterBar: React.FC<UserManagementFilterBarProps> = (
   onSearchTermChange,
   roleFilter,
   onRoleFilterChange,
+  branchFilter,
+  onBranchFilterChange,
+  branches,
+  branchesLoading = false,
+  showBranchFilter = false,
   loading,
   isBranchAdmin,
   onRefresh,
@@ -59,6 +70,16 @@ export const UserManagementFilterBar: React.FC<UserManagementFilterBarProps> = (
             className="pl-8"
           />
         </div>
+        {showBranchFilter ? (
+          <div className="min-w-[180px]">
+            <BranchFilterSelect
+              value={branchFilter}
+              branches={branches}
+              loading={branchesLoading}
+              onChange={onBranchFilterChange}
+            />
+          </div>
+        ) : null}
         <div className="min-w-[150px]">
           <Select
             value={roleFilter}

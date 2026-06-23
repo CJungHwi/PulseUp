@@ -9,7 +9,7 @@ import { applyIntroMonitorImage } from './applyMonitorDisplayToDom.js'
 import { resolveMainPhaseSeekLabel } from './five-screen-seek-label.js'
 import { scheduleIntroSequencesForMonitor } from './circuits/intro-workout-grid-schedule.js'
 import { schedulePreviewMainSequences } from './circuits/workout-preview-sequence-schedule.js'
-import { resolveWorkoutCircuitType } from './components/workout-timer-circuit.js'
+import { resolveWorkoutCircuitType, resolveWorkoutMethodType } from './components/workout-timer-circuit.js'
 import type { WorkoutPlayTimerUI } from './components/WorkoutPlayTimerUI.js'
 import {
   DEFAULT_GRID_POSITION,
@@ -139,6 +139,7 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
       introImageUrl: introImageUrl || '(없음)'
     })
     // clearCache=false: ready·이전 단계에서 쌓인 오프스크린 preload 를 인트로·운동시작까지 유지
+    this.workoutGridDisplay.setFiveScreenLayout(this.usesFiveScreenPanelQueue)
     this.workoutGridDisplay.render(
       true,
       introImageUrl || undefined,
@@ -359,7 +360,8 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
       // 5-mode: 큐는 이미 panel별로 분리되어 있음 → 그대로 사용
       log(`🎬 [Queue] ${this.currentDisplay} (panel=${data.panel}): 큐 설정`,
         Object.keys(slotQueues).map(k => `slot${k}: ${slotQueues[Number(k)].length}개`))
-      this.workoutGridDisplay.setCircuitType(resolveWorkoutCircuitType(data))
+      this.workoutGridDisplay.setCircuitType(resolveWorkoutCircuitType(data), resolveWorkoutMethodType(data))
+      this.workoutGridDisplay.setFiveScreenLayout(true)
       this.workoutGridDisplay.render(false)
       this.workoutGridDisplay.setupVideoQueues(slotQueues)
       this.hasCountdownPreview = true
@@ -385,7 +387,8 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
 
     log(`🎬 [Queue] ${this.currentDisplay}: 큐 설정`, Object.keys(filteredQueues).map(k => `slot${k}: ${filteredQueues[Number(k)].length}개`))
 
-    this.workoutGridDisplay.setCircuitType(resolveWorkoutCircuitType(data))
+    this.workoutGridDisplay.setCircuitType(resolveWorkoutCircuitType(data), resolveWorkoutMethodType(data))
+    this.workoutGridDisplay.setFiveScreenLayout(false)
     this.workoutGridDisplay.render(false)
     this.workoutGridDisplay.setupVideoQueues(filteredQueues)
     this.hasCountdownPreview = true
@@ -405,7 +408,7 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
       targetLabel = position && /^DS\d+$/.test(position) ? position : 'DS1'
     } else if (round === 99) {
       targetLabel = position && /^CD\d+$/.test(position) ? position : 'CD1'
-    } else if (position && /^[ABLR](\d+)$/i.test(position)) {
+    } else if (position && /^[ABCDLR](\d+)$/i.test(position)) {
       targetLabel = resolveMainPhaseSeekLabel(this.currentDisplay, position, {
         fiveScreen: this.usesFiveScreenPanelQueue,
       })
@@ -429,7 +432,7 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
     }
   }
 
-  // Main: parseGridPosition.side (num 1-3=좌, 4-6=우)
+  // Main: parseGridPosition.side (A/B=좌, C/D=우)
   protected isPositionForLeftMonitor(position: string): boolean {
     if (!position) return true
 
@@ -445,7 +448,7 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
     return true
   }
 
-  /** prefix A=set1(전반), B=set2(후반) */
+  /** prefix A/B=set1(전반), C/D=set2(후반) */
   protected getMainTargetSetFromPosition(position: string): 'set1' | 'set2' | null {
     if (!position) return null
     const parsed = parseGridPosition(position)
@@ -496,7 +499,7 @@ export abstract class ElectronRendererWorkout extends ElectronRendererBase {
     }
 
     if (this.isWorkoutGridDisplay(this.currentDisplay) && this.workoutGridDisplay) {
-      this.workoutGridDisplay.setCircuitType(resolveWorkoutCircuitType(data))
+      this.workoutGridDisplay.setCircuitType(resolveWorkoutCircuitType(data), resolveWorkoutMethodType(data))
 
       // 스트레칭(6슬롯) -> 메인(3슬롯) 전환 시 그리드 리셋
       if (!data.stretchingMode && this.workoutGridDisplay.isStretchingLayout()) {

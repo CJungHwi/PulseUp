@@ -2,43 +2,32 @@ import { buildAmrapExerciseGroups } from '../amrapGroupBuilders'
 import type { Exercise, PanelRow } from '../types'
 import { WorkoutExerciseItem } from './save-types'
 import {
-  GRID_FIRST_HALF_PREFIX,
-  GRID_SECOND_HALF_PREFIX,
-  STRESS_LAP_ORDER,
-  parseGridPosition,
+  lapOrderForCircuit,
+  normalizeGridPosition,
 } from '@/utils/gridPositionCodes'
 
-/** 반(prefix A/B) 기준 — 반 내부 STRESS_LAP_ORDER 스네이크 순 */
-export const sortExercisesForExecution = (exercises: Exercise[]): Exercise[] => {
-  const halfGroups: Map<string, Exercise[]> = new Map()
-
+/**
+ * lap 순서 기준 정렬 — A~D 구역 스네이크 순.
+ * 모든 Main 서킷은 3화면 기준 전반 A/B, 후반 C/D 순서를 사용한다.
+ */
+export const sortExercisesForExecution = (
+  exercises: Exercise[],
+  circuitType?: string,
+): Exercise[] => {
+  const byPos = new Map<string, Exercise>()
   exercises.forEach((ex) => {
-    const parsed = parseGridPosition(ex.position)
-    if (!parsed) return
-    if (!halfGroups.has(parsed.prefix)) halfGroups.set(parsed.prefix, [])
-    halfGroups.get(parsed.prefix)!.push(ex)
+    const pos = normalizeGridPosition(ex.position ?? '')
+    if (pos) byPos.set(pos, ex)
   })
 
   const sortedExercises: Exercise[] = []
-  ;[GRID_FIRST_HALF_PREFIX, GRID_SECOND_HALF_PREFIX].forEach((halfPrefix) => {
-    const group = halfGroups.get(halfPrefix)
-    if (!group?.length) return
+  lapOrderForCircuit(circuitType).forEach((pos) => {
+    const ex = byPos.get(pos)
+    if (ex) sortedExercises.push(ex)
+  })
 
-    const orderSlice =
-      halfPrefix === GRID_FIRST_HALF_PREFIX
-        ? STRESS_LAP_ORDER.slice(0, 6)
-        : STRESS_LAP_ORDER.slice(6, 12)
-
-    const byPos = new Map<string, Exercise>()
-    group.forEach((ex) => {
-      const pos = parseGridPosition(ex.position)
-      if (pos) byPos.set(`${pos.prefix}${pos.num}`, ex)
-    })
-
-    orderSlice.forEach((pos) => {
-      const ex = byPos.get(pos)
-      if (ex) sortedExercises.push(ex)
-    })
+  exercises.forEach((ex) => {
+    if (!sortedExercises.includes(ex)) sortedExercises.push(ex)
   })
 
   return sortedExercises
@@ -48,7 +37,7 @@ export const getAmrapTimeBreakdownFromPanels = (
     panelRows: PanelRow[],
     exercises: Exercise[],
 ): { mainSeconds: number; restSeconds: number } => {
-    const sorted = sortExercisesForExecution(exercises)
+    const sorted = sortExercisesForExecution(exercises, 'amrap')
     if (panelRows.length === 0 || sorted.length === 0) {
         return { mainSeconds: 0, restSeconds: 0 }
     }
@@ -85,8 +74,8 @@ export const generateWorkoutExercises = (
 ): WorkoutExerciseItem[] => {
     const workoutExercises: WorkoutExerciseItem[] = []
     let sequence = 1
-    const sortedExercises = sortExercisesForExecution(exercises)
     const ct = (circuitType || 'stress').toLowerCase()
+    const sortedExercises = sortExercisesForExecution(exercises, ct)
 
     if (ct === 'stress') {
         sortedExercises.forEach((ex, exIndex) => {
@@ -103,6 +92,7 @@ export const generateWorkoutExercises = (
                     duration: row.time,
                     position: ex.position || null,
                     reps: ex.reps ?? 0,
+                    is_bilateral: !!ex.is_bilateral,
                 })
 
                 const isLastSet = setIndex === panelRows.length - 1
@@ -176,6 +166,7 @@ export const generateWorkoutExercises = (
                     duration: row.time,
                     position: ex.position || null,
                     reps: ex.reps ?? 0,
+                    is_bilateral: !!ex.is_bilateral,
                 })
 
                 const isLastExerciseInRound = exIndex === groupExercises.length - 1
@@ -273,7 +264,7 @@ export const generateEmomWorkoutExercises = (
 ): WorkoutExerciseItem[] => {
     const workoutExercises: WorkoutExerciseItem[] = []
     let sequence = 1
-    const sortedExercises = sortExercisesForExecution(exercises)
+    const sortedExercises = sortExercisesForExecution(exercises, 'emom')
     const groupSize = 6
     const numGroups = Math.ceil(sortedExercises.length / groupSize)
 
@@ -296,6 +287,7 @@ export const generateEmomWorkoutExercises = (
                     name: ex.name_ko || ex.name_en || '운동',
                     duration: row.time,
                     reps: ex.reps ?? 0,
+                    is_bilateral: !!ex.is_bilateral,
                     position: ex.position || null,
                 })
             })
@@ -338,7 +330,7 @@ export const generateEmomStressWorkoutExercises = (
 ): WorkoutExerciseItem[] => {
     const workoutExercises: WorkoutExerciseItem[] = []
     let sequence = 1
-    const sortedExercises = sortExercisesForExecution(exercises)
+    const sortedExercises = sortExercisesForExecution(exercises, 'emom')
     const groupSize = 6
     const lastPanelRow = panelRowsInSeconds[panelRowsInSeconds.length - 1]
 
@@ -355,6 +347,7 @@ export const generateEmomStressWorkoutExercises = (
                 name: ex.name_ko || ex.name_en || '운동',
                 duration: row.time,
                 reps: ex.reps ?? 0,
+                is_bilateral: !!ex.is_bilateral,
                 position: ex.position || null,
             })
 
@@ -415,7 +408,7 @@ export const generateWorkoutExercisesForTimeStructured = (
 ): WorkoutExerciseItem[] => {
     const workoutExercises: WorkoutExerciseItem[] = []
     let sequence = 1
-    const sortedExercises = sortExercisesForExecution(exercises)
+    const sortedExercises = sortExercisesForExecution(exercises, workoutType.toLowerCase())
 
     const defaultRow: PanelRow = {
         id: 'amrap-emom-default',
@@ -441,6 +434,7 @@ export const generateWorkoutExercisesForTimeStructured = (
                     name: ex.name_ko || ex.name_en || '운동',
                     duration: row.time * 60,
                     reps: ex.reps || 0,
+                    is_bilateral: !!ex.is_bilateral,
                     position: ex.position || null,
                 })
             })

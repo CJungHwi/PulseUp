@@ -23,6 +23,7 @@ export type WorkoutTimerCountdownDeps = {
   setCountdownInterval: (value: CountdownInterval) => void
   getCurrentSequenceType: () => string
   setCurrentSequenceType: (value: string) => void
+  getSuppressCountdownBell: () => boolean
   getCurrentCircuitType: () => string
   getCountdownViewRound: () => number
   setStartCountdownActive: (value: boolean) => void
@@ -41,6 +42,8 @@ const clearCountdownInterval = (deps: WorkoutTimerCountdownDeps): void => {
 
 const maybePlayBellForCountdown = (deps: WorkoutTimerCountdownDeps): void => {
   if (!SEQUENCE_TYPES_WITH_BELLS.has(deps.getCurrentSequenceType())) return
+  // EMOM-Stress 등에서 같은 운동의 SET 연속 전환 시 종료 벨을 끈다.
+  if (deps.getSuppressCountdownBell()) return
   const countdown = deps.getCountdown()
   if (countdown === 3) {
     void deps.sound.playStartBell()

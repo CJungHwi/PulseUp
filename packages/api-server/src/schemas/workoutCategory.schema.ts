@@ -38,6 +38,14 @@ export const createExerciseSchema = z.object({
   characteristics: z.string().optional(),
   equipment: z.string().max(255, '사용 기구는 255자를 초과할 수 없습니다').optional(),
   purpose: z.string().min(1, '운동 목적은 필수입니다').max(255, '운동 목적은 255자를 초과할 수 없습니다'),
+  video_url: z.string().max(500).optional(),
+  thumbnail_url: z.string().max(500).optional(),
+  video_title: z.string().max(255).optional(),
+  video_duration: z.number().int().min(0).optional(),
+  video_start_time: z.number().int().min(0).optional(),
+  video_end_time: z.number().int().min(0).optional(),
+  video_loop_count: z.number().int().min(1).optional(),
+  is_bilateral: z.boolean().optional().default(false),
   is_active: z.boolean().default(true)
 });
 
@@ -52,6 +60,14 @@ export const updateExerciseSchema = z.object({
   characteristics: z.string().optional(),
   equipment: z.string().max(255).optional(),
   purpose: z.string().min(1).max(255).optional(),
+  video_url: z.string().max(500).optional(),
+  thumbnail_url: z.string().max(500).optional(),
+  video_title: z.string().max(255).optional(),
+  video_duration: z.number().int().min(0).optional(),
+  video_start_time: z.number().int().min(0).optional(),
+  video_end_time: z.number().int().min(0).optional(),
+  video_loop_count: z.number().int().min(1).optional(),
+  is_bilateral: z.boolean().optional(),
   is_active: z.boolean().optional()
 });
 
@@ -102,6 +118,7 @@ export interface ExerciseResponse {
   characteristics?: string;
   equipment?: string;
   purpose: string;
+  is_bilateral?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;

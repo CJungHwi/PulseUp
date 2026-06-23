@@ -96,7 +96,8 @@ export class HeartRateManager {
       deviceName: deviceName,
       heartRate,
       timestamp: new Date(),
-      zone: calculateHeartRateZoneForApi(heartRate)
+      zone: calculateHeartRateZoneForApi(heartRate),
+      slotNumber
     }
 
     this.buffer.push(reading)
@@ -224,14 +225,14 @@ export class HeartRateManager {
   /** 심박수 데이터를 웹 API로 전송한다 */
   private async sendToWeb(heartRateData: HeartRateReading[]): Promise<boolean> {
     try {
-      if (Date.now() < this.uploadPausedUntilMs) {
-        this.appendQueue(heartRateData, { quiet: true })
-        return false
-      }
-
       const session = this.deps.getActivePlaySession()
       if (!session) {
         console.warn('활성 운동 세션이 없어 심박수 데이터 전송을 건너뜁니다')
+        return false
+      }
+
+      if (Date.now() < this.uploadPausedUntilMs) {
+        this.appendQueue(heartRateData, session, { quiet: true })
         return false
       }
 
@@ -253,7 +254,8 @@ export class HeartRateManager {
               deviceName: hr.deviceName,
               heartRate: hr.heartRate,
               timestamp: hr.timestamp,
-              zone: hr.zone
+              zone: hr.zone,
+              slotNumber: hr.slotNumber
             }))
           })
         },
@@ -272,7 +274,7 @@ export class HeartRateManager {
         }
         if (response.status === 401) {
           this.noteAuthFailureFromApi(401)
-          this.appendQueue(heartRateData, { quiet: true })
+          this.appendQueue(heartRateData, session, { quiet: true })
           return false
         }
         console.error(`❌ API 응답 에러 (${response.status}):`, errorText)
@@ -290,7 +292,7 @@ export class HeartRateManager {
       return true
     } catch (error) {
       console.error('❌ 심박수 데이터 전송 실패:', error)
-      this.appendQueue(heartRateData)
+      this.appendQueue(heartRateData, this.deps.getActivePlaySession())
       this.lastUpload = {
         at: new Date().toISOString(),
         ok: false,
@@ -304,14 +306,21 @@ export class HeartRateManager {
   }
 
   /** 전송 실패 데이터를 로컬 JSONL 파일에 적재한다 */
-  private appendQueue(heartRateData: HeartRateReading[], opts?: { quiet?: boolean }): void {
+  private appendQueue(
+    heartRateData: HeartRateReading[],
+    session: { userId?: string; masterId?: string } | null,
+    opts?: { quiet?: boolean }
+  ): void {
     try {
       const lines = heartRateData.map(hr => JSON.stringify({
+        userId: session?.userId,
+        workoutHistoryMasterId: session?.masterId,
         deviceId: hr.deviceId,
         deviceName: hr.deviceName,
         heartRate: hr.heartRate,
         timestamp: hr.timestamp instanceof Date ? hr.timestamp.toISOString() : hr.timestamp,
-        zone: hr.zone
+        zone: hr.zone,
+        slotNumber: hr.slotNumber
       }))
       fs.appendFileSync(this.queueFilePath, `${lines.join('\n')}\n`)
       if (!opts?.quiet) {
@@ -331,20 +340,37 @@ export class HeartRateManager {
       if (!raw) return
 
       const lines = raw.split('\n').filter(Boolean)
-      const batchLines = lines.slice(0, 200)
-      if (batchLines.length === 0) return
-
       const session = this.deps.getActivePlaySession()
       if (!session) return
 
-      const payload = batchLines.map(line => {
-        const parsed = JSON.parse(line)
+      const parsedLines = lines.map(line => {
+        try {
+          return { line, data: JSON.parse(line) }
+        } catch {
+          return null
+        }
+      }).filter(Boolean) as Array<{ line: string; data: any }>
+
+      const first = parsedLines[0]?.data
+      const targetMasterId = first?.workoutHistoryMasterId || session.masterId
+      const targetUserId = first?.userId || session.userId
+      const batchLines = parsedLines
+        .filter(item => (
+          (item.data.workoutHistoryMasterId || session.masterId) === targetMasterId &&
+          (item.data.userId || session.userId) === targetUserId
+        ))
+        .slice(0, 200)
+      if (batchLines.length === 0) return
+
+      const payload = batchLines.map(item => {
+        const parsed = item.data
         return {
           deviceId: parsed.deviceId,
           deviceName: parsed.deviceName,
           heartRate: parsed.heartRate,
           timestamp: parsed.timestamp,
-          zone: parsed.zone
+          zone: parsed.zone,
+          slotNumber: parsed.slotNumber
         }
       })
 
@@ -357,8 +383,8 @@ export class HeartRateManager {
             ...this.deps.buildAuthHeaders()
           },
           body: JSON.stringify({
-            userId: session.userId,
-            workoutHistoryMasterId: session.masterId,
+            userId: targetUserId,
+            workoutHistoryMasterId: targetMasterId,
             heartRateData: payload
           })
         },
@@ -372,7 +398,8 @@ export class HeartRateManager {
 
       this.uploadPausedUntilMs = 0
 
-      const remaining = lines.slice(batchLines.length)
+      const sentLines = new Set(batchLines.map(item => item.line))
+      const remaining = lines.filter(line => !sentLines.has(line))
       if (remaining.length === 0) {
         fs.unlinkSync(this.queueFilePath)
       } else {

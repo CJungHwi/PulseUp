@@ -5,6 +5,7 @@ export {
   createPlaybackNavigation,
   createWorkoutModuleForCircuitType,
   normalizeCircuitTypeFromMetadata,
+  resolveModuleCircuitType,
 } from './circuit-registry'
 export type { WorkoutModuleContext, WorkoutModule, PlaybackNavigation } from './circuits/shared/base-module'
 export type { IntroCircuitKind, IntroSequenceCollectContext } from './circuits/shared/intro-circuit'
@@ -45,6 +46,7 @@ export { ReadyModule } from './circuits/shared/ready-module'
 export { StressModule } from './circuits/stress/stress-module'
 export { LoopModule } from './circuits/loop/loop-module'
 export { EmomModule } from './circuits/emom/emom-module'
+export { EmomStressModule } from './circuits/emom-stress/emom-stress-module'
 export { AmrapModule } from './circuits/amrap/amrap-module'
 /** @deprecated prefer `./circuits/emom/emom-constants` — kept for existing deep imports */
 export {

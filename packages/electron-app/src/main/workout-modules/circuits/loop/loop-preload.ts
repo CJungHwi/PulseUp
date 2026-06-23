@@ -3,6 +3,10 @@ import { log } from '../shared/base-module'
 import { PreloadManager } from '../shared/preload-manager'
 import { collectMainHalfGroupExercises, getMainHalfGroupIndexFromPosition } from '../shared/main-half-group-utils'
 import { buildTimelineForLoop, getPreloadWindow } from '../shared/timeline-utils'
+import { getScreenMode } from '../../../screen-mode-store'
+import { getHalfRoundsCountFromSession } from '../shared/half-rounds-meta'
+import { getLoopHalfGroupIndex } from './loop-constants'
+import { resolveLoopQueueSeekPosition } from './loop-order'
 
 /** Stress와 동일한 패턴: 타임라인 프리로드 + 다음 A/B 그룹 6슬롯 + CD 프리로드 */
 export const preloadLoopFromTimeline = (ctx: WorkoutModuleContext, currentIndex: number): void => {
@@ -87,16 +91,31 @@ export const preloadNextLoopGroupDuringWater = (
   )
   if (!nextExercise) return
 
-  const nextLoopGroupIndex = getMainHalfGroupIndexFromPosition(nextExercise.position || '')
+  const halfRounds = getHalfRoundsCountFromSession(ctx.activePlaySession)
+  const nextRound = Number(nextExercise.round)
+  const nextLoopGroupIndex = getLoopHalfGroupIndex(nextRound, halfRounds)
   const nextPosMap = collectMainHalfGroupExercises(
     ctx.activePlaySession!.sequences,
     nextLoopGroupIndex,
   )
+  const seekPosition = resolveLoopQueueSeekPosition(nextExercise, halfRounds)
 
   const nextActiveSet = {
     left: nextLoopGroupIndex > 0 ? 'set2' : 'set1',
     right: nextLoopGroupIndex > 0 ? 'set2' : 'set1',
   } as const
+
+  const isFiveScreenMode = getScreenMode() === 'five'
+  if (isFiveScreenMode) {
+    log('💧 [LoopModule] 5-screen: 물보충 중 다음 그룹 seek 생략')
+  } else {
+    log(`💧 [LoopModule] 물보충 중 다음 그룹으로 큐 seek (Group ${nextLoopGroupIndex + 1}, position ${seekPosition}, source ${nextExercise.position})`)
+    ctx.broadcastToAllWindows('workout-seek-queue', {
+      round: nextRound,
+      position: seekPosition,
+    })
+    ctx.setLastStressGroupIndex(nextLoopGroupIndex)
+  }
 
   log(`💧 [LoopModule] 물보충 중 다음 그룹 영상 로드 (Group ${nextLoopGroupIndex + 1})`)
   const syncStartAtMs = Date.now() + 1000

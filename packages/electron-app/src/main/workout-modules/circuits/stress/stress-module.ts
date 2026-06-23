@@ -10,19 +10,11 @@ import {
 } from './stress-preload'
 import { getScreenMode } from '../../../screen-mode-store'
 import {
-  STRESS_LAP_ORDER,
-  normalizeGridPosition,
-  parseGridPosition,
-} from '../../../../common/grid-position-codes.js'
-import {
-  collectMainHalfGroupExercises,
-  getGridNumFromPosition,
-  getMainHalfGroupIndexFromPosition,
-} from '../shared/main-half-group-utils'
+  collectStressGroupExercises,
+  getStressOrderInfo,
+} from './stress-order'
 
-/** Stress 실행 순서: A1→A2→A3→A6→A5→A4 (전반), B1→B2→B3→B6→B5→B4 (후반) */
-const LAP_ORDER = [...STRESS_LAP_ORDER]
-
+/** Stress 실행 순서: A1→A2→A3→B3→B2→B1 (전반), C1→C2→C3→D3→D2→D1 (후반) */
 export class StressModule implements WorkoutModule {
   private stretchingModule = new StretchingModule()
   private readyModule = new ReadyModule()
@@ -93,24 +85,15 @@ export class StressModule implements WorkoutModule {
       return
     }
 
-    const posNum = getGridNumFromPosition(currentSeq.position || '')
-    const stressGroupIndex = getMainHalfGroupIndexFromPosition(currentSeq.position || '')
-
-    const positionMap = collectMainHalfGroupExercises(
+    const orderInfo = getStressOrderInfo(
+      ctx.activePlaySession!.sequences,
+      currentSeq,
+    )
+    const stressGroupIndex = orderInfo.groupIndex
+    const currentGroup = collectStressGroupExercises(
       ctx.activePlaySession!.sequences,
       stressGroupIndex,
     )
-
-    const sortedPositionKeys = Array.from(positionMap.keys()).sort((a, b) => {
-      const pa = parseGridPosition(a)
-      const pb = parseGridPosition(b)
-      if (!pa || !pb) return 0
-      if (pa.side === 'left' && pb.side === 'right') return -1
-      if (pa.side === 'right' && pb.side === 'left') return 1
-      if (pa.side === 'left') return pa.num - pb.num
-      return pb.num - pa.num
-    })
-    const currentGroup = sortedPositionKeys.map(k => positionMap.get(k)!)
 
     const activeSet: ActiveSet = { left: 'set1', right: 'set1' }
     if (stressGroupIndex > 0) {
@@ -120,13 +103,8 @@ export class StressModule implements WorkoutModule {
 
     const metadata = ctx.activePlaySession!.metadata || {}
     const totalSets = metadata.totalSets || 3
-    const lapIndexRaw = (() => {
-      const idx = LAP_ORDER.indexOf(normalizeGridPosition(currentSeq.position || ''))
-      return idx >= 0 ? idx + 1 : 1
-    })()
-    const isSecondHalf = posNum >= 4
-    const lapIndex = isSecondHalf ? ((lapIndexRaw - 1) % 6) + 1 : lapIndexRaw
-    const totalLaps = 6
+    const lapIndex = orderInfo.lapIndex
+    const totalLaps = orderInfo.totalLaps
     const setIndex = currentRound
 
     log(`🎬 [StressModule] Main Workout (Round ${currentRound}, Group ${stressGroupIndex + 1}):`, {
@@ -139,8 +117,13 @@ export class StressModule implements WorkoutModule {
       lapIndex,
       totalLaps,
       setIndex,
-      totalSets
+      totalSets,
+      ordinal: orderInfo.ordinal,
     })
+
+    log(
+      `[StressModule] ${currentSeq.exercise_name} - SET ${setIndex}/${totalSets}, MOVE ${lapIndex}/${totalLaps} (pos ${currentSeq.position}, round ${currentRound})`,
+    )
 
     const prevGroupIndex = ctx._lastStressGroupIndex
     ctx.setLastStressGroupIndex(stressGroupIndex)
@@ -153,7 +136,7 @@ export class StressModule implements WorkoutModule {
       // set1→set2 전환 시 큐 advance (첫 그룹은 카운트다운에서 이미 advance됨, 네비게이션 리셋(-1)은 제외)
       if (stressGroupIndex > 0 && prevGroupIndex >= 0) {
         if (isFiveScreenMode) {
-          log('🎬 [StressModule] 5-screen: B* 전용 패널 사용으로 슬롯 advance 생략')
+          log('🎬 [StressModule] 5-screen: C/D 전용 패널 사용으로 슬롯 advance 생략')
         } else {
           ctx.broadcastToAllWindows('workout-advance-slots', {
             slots: [1, 2, 3]
@@ -233,21 +216,25 @@ export class StressModule implements WorkoutModule {
     log(`🎬 [StressModule] ${currentSeq.exercise_name} (${currentSeq.duration}초)${isWater ? ' [물보충]' : ''}`)
 
     const prevExercise = currentIndex > 0 ? ctx.activePlaySession!.sequences[currentIndex - 1] : null
-    const posForLap = normalizeGridPosition(prevExercise?.position || currentSeq.position || '')
-    const restGroupIndex = getMainHalfGroupIndexFromPosition(posForLap)
+    const restOrderInfo = getStressOrderInfo(
+      ctx.activePlaySession!.sequences,
+      prevExercise || currentSeq,
+    )
+    const posForLap = restOrderInfo.position
+    const restGroupIndex = restOrderInfo.groupIndex
     const restActiveSet: ActiveSet = {
       left: restGroupIndex > 0 ? 'set2' : 'set1',
       right: restGroupIndex > 0 ? 'set2' : 'set1',
     }
 
-    const stressLapRaw = (() => {
-      const idx = LAP_ORDER.indexOf(posForLap)
-      return idx >= 0 ? idx + 1 : 1
-    })()
-    const stressLapIndex = stressLapRaw <= 6 ? stressLapRaw : ((stressLapRaw - 1) % 6) + 1
-    const stressTotalLaps = 6
+    const stressLapIndex = restOrderInfo.lapIndex
+    const stressTotalLaps = restOrderInfo.totalLaps
     const stressSetIndex = currentRound
     const stressTotalSets = ctx.activePlaySession!.metadata?.totalSets || 3
+
+    log(
+      `[StressModule] ${isWater ? '물보충' : '휴식'} - SET ${stressSetIndex}/${stressTotalSets}, MOVE ${stressLapIndex}/${stressTotalLaps} (pos ${posForLap}, round ${currentRound})`,
+    )
 
     ctx.broadcastToAllWindows('workout-play-sequence', {
       sequence: currentSeq,
@@ -290,8 +277,11 @@ export class StressModule implements WorkoutModule {
 
     if (!nextExercise) return
 
-    const nextStressGroupIndex = getMainHalfGroupIndexFromPosition(nextExercise.position || '')
-    const nextPosMap = collectMainHalfGroupExercises(
+    const nextStressGroupIndex = getStressOrderInfo(
+      ctx.activePlaySession!.sequences,
+      nextExercise,
+    ).groupIndex
+    const nextGroup = collectStressGroupExercises(
       ctx.activePlaySession!.sequences,
       nextStressGroupIndex,
     )
@@ -301,19 +291,21 @@ export class StressModule implements WorkoutModule {
       right: nextStressGroupIndex > 0 ? 'set2' : 'set1'
     }
 
+    const isFiveScreenMode = getScreenMode() === 'five'
+    if (isFiveScreenMode) {
+      log('💧 [StressModule] 5-screen: 물보충 중 다음 그룹 seek 생략')
+    } else {
+      log(`💧 [StressModule] 물보충 중 다음 그룹으로 큐 seek (Group ${nextStressGroupIndex + 1}, position ${nextExercise.position})`)
+      ctx.broadcastToAllWindows('workout-seek-queue', {
+        round: Number(nextExercise.round),
+        position: String(nextExercise.position || ''),
+      })
+      ctx.setLastStressGroupIndex(nextStressGroupIndex)
+    }
+
     log(`💧 [StressModule] 물보충 중 다음 그룹 영상 로드 (Group ${nextStressGroupIndex + 1})`)
     const syncStartAtMs = Date.now() + 1000
-    const sortedNextKeys = Array.from(nextPosMap.keys()).sort((a, b) => {
-      const pa = parseGridPosition(a)
-      const pb = parseGridPosition(b)
-      if (!pa || !pb) return 0
-      if (pa.side === 'left' && pb.side === 'right') return -1
-      if (pa.side === 'right' && pb.side === 'left') return 1
-      if (pa.side === 'left') return pa.num - pb.num
-      return pb.num - pa.num
-    })
-    sortedNextKeys.forEach(k => {
-      const seq = nextPosMap.get(k)!
+    nextGroup.forEach(seq => {
       ctx.broadcastToAllWindows('workout-play-sequence', {
         sequence: seq,
         round: currentRound,

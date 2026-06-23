@@ -1,7 +1,7 @@
 /**
- * 페이지 요약 — 운동 Scope 관리 (`/admin/workout-scope`)
+ * 페이지 요약 — 운동저장구분 관리 (`/admin/workout-scope`)
  *
- * 기능: workout_scope 마스터 등록·수정·사용안함(비활성) 처리.
+ * 기능: workout_scope(운동저장구분) 마스터 등록·수정·사용안함(비활성) 처리.
  *
  * 호출/연동:
  * - `GET /workout-scopes?includeInactive=true`
@@ -98,7 +98,7 @@ const WorkoutScopeManager: React.FC = () => {
   const handleEditSelected = () => {
     const item = items.find((row) => row.id === selectedId)
     if (!item) {
-      showSnackbar({ message: '수정할 scope를 선택해주세요.', severity: 'warning' })
+      showSnackbar({ message: '수정할 운동저장구분을 선택해주세요.', severity: 'warning' })
       return
     }
     handleOpenEdit(item)
@@ -120,14 +120,14 @@ const WorkoutScopeManager: React.FC = () => {
     try {
       if (modalMode === 'create') {
         await createWorkoutScope(formData)
-        showSnackbar({ message: '운동 scope가 등록되었습니다.', severity: 'success' })
+        showSnackbar({ message: '운동저장구분이 등록되었습니다.', severity: 'success' })
       } else if (selectedId) {
         await updateWorkoutScope(selectedId, {
           scopeName: formData.scopeName,
           sortOrder: formData.sortOrder,
           isActive: formData.isActive,
         })
-        showSnackbar({ message: '운동 scope가 수정되었습니다.', severity: 'success' })
+        showSnackbar({ message: '운동저장구분이 수정되었습니다.', severity: 'success' })
       }
       setModalOpen(false)
       await loadItems()
@@ -144,7 +144,7 @@ const WorkoutScopeManager: React.FC = () => {
       <div className="flex justify-between items-center px-4 py-2 bg-muted/30 border-b border-[#343637] dark:border-[#6b7280]">
         <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
           <Layers className="h-5 w-5 text-primary" />
-          운동 Scope 관리
+          운동저장구분 관리
         </h1>
         <div className="flex gap-2">
           <Button
@@ -153,12 +153,12 @@ const WorkoutScopeManager: React.FC = () => {
             className="h-8"
             disabled={!selectedId}
             onClick={handleEditSelected}
-            aria-label="선택 scope 수정"
+            aria-label="선택 운동저장구분 수정"
           >
             <Pencil className="w-4 h-4 mr-2" />
             수정
           </Button>
-          <Button size="sm" className="h-8" onClick={handleOpenCreate} aria-label="scope 추가">
+          <Button size="sm" className="h-8" onClick={handleOpenCreate} aria-label="운동저장구분 추가">
             <Plus className="w-4 h-4 mr-2" />
             추가
           </Button>
@@ -166,8 +166,8 @@ const WorkoutScopeManager: React.FC = () => {
       </div>
 
       <div className="px-4 py-2 text-sm text-muted-foreground border-b border-[#343637] dark:border-[#6b7280] bg-muted/20">
-        운동 저장 시 사용할 scope 분류 코드입니다. 각 운동 페이지는 코드를 직접 지정하고,
-        여기서 사용 여부만 관리합니다. 월간 프로그램은 scope별 저장 이력을 조회·실행합니다.
+        운동 저장 시 사용할 운동저장구분 코드입니다. 각 운동 페이지는 코드를 직접 지정하고,
+        여기서 사용 여부만 관리합니다. 월간 프로그램은 운동저장구분별 저장 이력을 조회·실행합니다.
       </div>
 
       <div className="flex-1 min-h-0 px-0 pb-0">

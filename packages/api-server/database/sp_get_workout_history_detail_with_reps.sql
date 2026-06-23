@@ -24,7 +24,7 @@ BEGIN
     FROM workout_history_master whm
     WHERE whm.id = p_master_id;
     
-    -- 상세 정보 조회 (reps 필드 포함)
+    -- 상세 정보 조회 (reps, is_bilateral 필드 포함)
     SELECT 
         whd.workout_history_master_id,
         whd.seq,
@@ -32,6 +32,7 @@ BEGIN
         whd.method_round,
         whd.duration,
         COALESCE(whd.reps, 0) as reps, -- reps 필드 추가 (NULL이면 0)
+        COALESCE(whd.is_bilateral, e.is_bilateral, 0) as is_bilateral,
         whd.position,
         whd.exercise_type,
         e.workout_category_id,

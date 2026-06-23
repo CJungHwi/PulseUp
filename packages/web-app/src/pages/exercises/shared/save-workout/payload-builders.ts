@@ -5,6 +5,7 @@ const mapDynamicDetail = (ex: Exercise) => ({
     position: ex.position,
     exercise_type: ex.major_category ? String(ex.major_category).toUpperCase() : '',
     duration: ex.duration,
+    is_bilateral: !!ex.is_bilateral,
 })
 
 const mapCircuitMainDetail = (ex: Exercise) => ({
@@ -13,6 +14,7 @@ const mapCircuitMainDetail = (ex: Exercise) => ({
     exercise_type: 'MAIN',
     duration: ex.duration,
     reps: ex.reps ?? 0,
+    is_bilateral: !!ex.is_bilateral,
 })
 
 const mapAmrapMainDetail = (ex: Exercise) => ({
@@ -21,6 +23,7 @@ const mapAmrapMainDetail = (ex: Exercise) => ({
     exercise_type: 'MAIN',
     duration: ex.duration ?? 0,
     reps: ex.reps,
+    is_bilateral: !!ex.is_bilateral,
 })
 
 const mapEmomMainDetail = (ex: Exercise) => ({
@@ -29,6 +32,7 @@ const mapEmomMainDetail = (ex: Exercise) => ({
     exercise_type: ex.major_category ? String(ex.major_category).toUpperCase() : '',
     duration: ex.duration ?? 0,
     reps: ex.reps,
+    is_bilateral: !!ex.is_bilateral,
 })
 
 const mapCooldownDetail = (ex: Exercise) => ({
@@ -36,6 +40,7 @@ const mapCooldownDetail = (ex: Exercise) => ({
     position: ex.position,
     exercise_type: 'CD',
     duration: ex.duration,
+    is_bilateral: !!ex.is_bilateral,
 })
 
 const mapCooldownDetailKeepMajor = (ex: Exercise) => ({
@@ -43,6 +48,7 @@ const mapCooldownDetailKeepMajor = (ex: Exercise) => ({
     position: ex.position,
     exercise_type: ex.major_category ? String(ex.major_category).toUpperCase() : '',
     duration: ex.duration,
+    is_bilateral: !!ex.is_bilateral,
 })
 
 export const buildCircuitPlanData = (panelRows: PanelRow[], circuitType: string) =>
@@ -72,6 +78,35 @@ export const buildEmomPlanData = (panelRows: PanelRow[]) =>
         circuit_type: 'emom',
         hydration: Math.max(0, Number(row.waterBreak ?? 0)) * 60,
     }))
+
+/** COMBO: 3행 고정 — 시간·휴식은 마지막 행만, 앞 행은 reps 슬롯 */
+export const buildComboPlanData = (panelRows: PanelRow[], circuitType: string) =>
+    panelRows.map((row, index, arr) => ({
+        round: row.round,
+        time: index < arr.length - 1 ? 0 : row.time,
+        rest: index < arr.length - 1 ? 0 : row.rest,
+        hydration: 0,
+        circuit_type: circuitType,
+    }))
+
+const mapComboMainDetail = (ex: Exercise) => ({
+    originalExerciseId: ex.originalExerciseId || ex.id,
+    position: ex.position,
+    exercise_type: 'COMBO',
+    duration: ex.duration,
+    reps: ex.reps ?? 0,
+    is_bilateral: !!ex.is_bilateral,
+})
+
+export const buildComboDetailData = (
+    dynamicExercises: Exercise[],
+    exercises: Exercise[],
+    coolDownExercises: Exercise[],
+) => [
+    ...dynamicExercises.map(mapDynamicDetail),
+    ...exercises.map(mapComboMainDetail),
+    ...coolDownExercises.map(mapCooldownDetail),
+]
 
 export const buildCircuitDetailData = (
     dynamicExercises: Exercise[],

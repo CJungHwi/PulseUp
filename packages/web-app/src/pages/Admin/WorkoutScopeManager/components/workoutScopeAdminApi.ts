@@ -1,5 +1,5 @@
 /**
- * workoutScopeAdminApi — Admin 운동 Scope CRUD
+ * workoutScopeAdminApi — Admin 운동저장구분 CRUD
  *
  * API: GET/POST /workout-scopes, PUT /workout-scopes/:id
  */

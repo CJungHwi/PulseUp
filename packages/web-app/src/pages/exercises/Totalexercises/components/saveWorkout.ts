@@ -21,4 +21,8 @@ export {
     saveCircuit,
     saveAMRAP,
     saveEMOM,
+    saveCOMBO,
+    getComboTimeBreakdownFromPanels,
+    COMBO_GROUP_SIZE,
+    isComboMajorCategory,
 } from '../../shared/saveWorkout'

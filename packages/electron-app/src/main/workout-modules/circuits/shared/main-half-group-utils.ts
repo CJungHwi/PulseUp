@@ -1,15 +1,13 @@
 import {
-  GRID_FIRST_HALF_PREFIX,
-  GRID_SECOND_HALF_PREFIX,
   normalizeGridPosition,
   parseGridPosition,
 } from '../../../../common/grid-position-codes.js'
 
-/** prefix A → 0(set1), B → 1(set2) */
+/** prefix A/B → 0(set1, 전반), C/D → 1(set2, 후반) */
 export const getMainHalfGroupIndexFromPosition = (position: string): number => {
   const parsed = parseGridPosition(normalizeGridPosition(position))
   if (!parsed) return 0
-  return parsed.prefix === GRID_FIRST_HALF_PREFIX ? 0 : 1
+  return parsed.set === 'set1' ? 0 : 1
 }
 
 export const getGridNumFromPosition = (position: string): number => {
@@ -20,13 +18,15 @@ export const getGridNumFromPosition = (position: string): number => {
 export const isSecondMainHalfPosition = (position: string): boolean =>
   getMainHalfGroupIndexFromPosition(position) === 1
 
-/** group 0 → A1–A6, group 1 → B1–B6 */
+/** group 0(전반) → A1–A3/B1–B3, group 1(후반) → C1–C3/D1–D3 */
 export const buildMainHalfGroupPositionSet = (groupIndex: number): Set<string> => {
   if (groupIndex !== 0 && groupIndex !== 1) return new Set<string>()
-  const prefix = groupIndex === 0 ? GRID_FIRST_HALF_PREFIX : GRID_SECOND_HALF_PREFIX
+  const prefixes = groupIndex === 0 ? ['A', 'B'] : ['C', 'D']
   const set = new Set<string>()
-  for (let num = 1; num <= 6; num++) {
-    set.add(`${prefix}${num}`)
+  for (const prefix of prefixes) {
+    for (let num = 1; num <= 3; num++) {
+      set.add(`${prefix}${num}`)
+    }
   }
   return set
 }

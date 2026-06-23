@@ -5,8 +5,8 @@
  *
  * 호출/연동: API 없음.
  *
- * 관련 컴포넌트: `MemberWorkoutRecords`, `BookingAttendanceList`, `WorkoutDayList`, `HeartRateChartCard`,
- *              `InbodyOverviewCard`.
+ * 관련 컴포넌트: `MemberWorkoutRecords`, `MemberWorkoutHeartRateDetail`, `BookingAttendanceList`,
+ *              `WorkoutDayList`, `HeartRateChartCard`, `HeartRateReadingsTable`, `InbodyOverviewCard`.
  *
  * 흐름: API 원본 값 → 사용자 표시용 라벨/스타일 변환.
  */

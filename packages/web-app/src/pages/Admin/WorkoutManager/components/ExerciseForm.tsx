@@ -1,3 +1,9 @@
+/**
+ * ExerciseForm
+ * - 기능: 운동 마스터 상세/수정 폼, Vimeo 연결 정보와 썸네일 미리보기 표시
+ * - API: 부모 `WorkoutManager`에서 createExercise/updateExercise dispatch
+ * - 흐름: 목록 선택 → 폼 표시 → 수정 모드에서 운동구분/한글명/부가정보/양쪽운동/상태 저장
+ */
 import React, { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -166,8 +172,8 @@ export const ExerciseForm: React.FC<ExerciseFormProps> = ({
                             </div>
                         </div>
 
-                        {/* 2row: 자극부위 / 필요기구 / 영상링크 / 상태 */}
-                        <div className="grid grid-cols-4 gap-3">
+                        {/* 2row: 자극부위 / 필요기구 / 영상링크 / 양쪽운동 / 상태 */}
+                        <div className="grid grid-cols-5 gap-3">
                             <div className="space-y-2">
                                 <Label htmlFor="target_muscles" className={labelClassName}>자극부위</Label>
                                 <Input
@@ -198,6 +204,19 @@ export const ExerciseForm: React.FC<ExerciseFormProps> = ({
                                     placeholder="https://vimeo.com/..."
                                     className={cn(inputClassName, "opacity-80")}
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="is_bilateral" className={labelClassName}>양쪽운동</Label>
+                                <div className="h-10 flex items-center justify-center gap-2">
+                                    <Switch
+                                        id="is_bilateral"
+                                        checked={!!formData.is_bilateral}
+                                        onCheckedChange={(checked) => onFormChange('is_bilateral', checked)}
+                                        disabled={!isEditing}
+                                        className="scale-90 origin-center disabled:opacity-100 data-[state=checked]:bg-blue-600 data-[state=unchecked]:bg-slate-500"
+                                    />
+                                    <span className="text-xs text-muted-foreground">{formData.is_bilateral ? 'Y' : 'N'}</span>
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="is_active" className={labelClassName}>상태</Label>

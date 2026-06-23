@@ -2,13 +2,14 @@
  * 소스 요약 — 수업 예약자 출석체크 다이얼로그
  *
  * 기능: 선택한 수업 슬롯의 예약자 목록을 표시하고 예약중/출석/노쇼 상태를 변경한다.
- *       취소된 예약은 읽기 전용으로 표시한다.
+ *       취소된 예약은 읽기 전용으로 표시하며, 운동기록 ID 기준 개인별 심박계 배정을 함께 관리한다.
  *
- * 호출/연동: `bookingApi.getSlotBookings`, `bookingApi.updateBookingAttendance`.
+ * 호출/연동: `bookingApi.getSlotBookings`, `bookingApi.updateBookingAttendance`,
+ *           `HeartRateParticipantPanel`.
  *
- * 관련 컴포넌트: shadcn `Dialog`, `Table`, `Select`, `Badge`, `Button`.
+ * 관련 컴포넌트: `HeartRateParticipantPanel`, shadcn `Dialog`, `Table`, `Select`, `Badge`, `Button`.
  *
- * 흐름: 슬롯 선택 → 예약자 목록 조회 → 상태 변경 → 재조회 → 닫을 때 상위 슬롯 재조회.
+ * 흐름: 슬롯 선택 → 예약자 목록 조회 → 출석 상태 변경 또는 심박계 배정 → 재조회 → 닫을 때 상위 슬롯 재조회.
  */
 
 import React, { useCallback, useEffect, useState } from 'react'
@@ -51,6 +52,7 @@ import {
   getApiErrorMessage,
   getSlotCategoryLabel,
 } from './bookingCalendarUtils'
+import HeartRateParticipantPanel from './HeartRateParticipantPanel'
 
 interface AttendanceDialogProps {
   open: boolean
@@ -168,7 +170,7 @@ export const AttendanceDialog: React.FC<AttendanceDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && handleClose()}>
-      <DialogContent className="max-w-4xl p-0 border-[#343637] dark:border-[#6b7280] overflow-hidden">
+      <DialogContent className="max-w-6xl p-0 border-[#343637] dark:border-[#6b7280] overflow-hidden">
         <DialogHeader className="h-12 px-4 py-0 border-b bg-muted/30 flex flex-row items-center justify-between space-y-0 border-[#343637] dark:border-[#6b7280]">
           <DialogTitle className="text-lg font-bold flex items-center gap-2 leading-none">
             예약자 출석체크
@@ -202,65 +204,68 @@ export const AttendanceDialog: React.FC<AttendanceDialogProps> = ({
                 예약자가 없습니다.
               </div>
             ) : (
-              <div className="max-h-[420px] overflow-auto scrollbar-hide bg-[#f9fafb] dark:bg-[#1d1d1d] border border-[#343637] dark:border-[#6b7280]">
-                <Table className="w-full table-fixed border-separate border-spacing-0">
-                  <TableHeader className="sticky top-0 z-10 shadow-sm">
-                    <TableRow className="hover:bg-transparent border-b-0">
-                      <TableHead className={cn(HEADER_CELL, 'w-[120px]')}>이름</TableHead>
-                      <TableHead className={cn(HEADER_CELL, 'w-[120px]')}>아이디</TableHead>
-                      <TableHead className={cn(HEADER_CELL, 'w-[200px]')}>이메일</TableHead>
-                      <TableHead className={cn(HEADER_CELL, 'w-[140px]')}>예약일시</TableHead>
-                      <TableHead className={cn(HEADER_CELL, 'w-[100px]')}>현재 상태</TableHead>
-                      <TableHead className={cn(HEADER_CELL_LAST, 'w-[150px]')}>출석 처리</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bookings.map((booking) => {
-                      const editable = isAttendanceStatus(booking.status)
-                      return (
-                        <TableRow
-                          key={booking.id}
-                          className="h-[35px] border-b-0 group transition-colors bg-[#f9fafb] dark:bg-[#1d1d1d] hover:text-blue-600 dark:hover:text-yellow-400 hover:bg-muted/30"
-                        >
-                          <TableCell className={cn(BODY_CELL, 'truncate')}>{booking.name}</TableCell>
-                          <TableCell className={cn(BODY_CELL, 'truncate')}>{booking.userid}</TableCell>
-                          <TableCell className={cn(BODY_CELL, 'truncate')}>{booking.email}</TableCell>
-                          <TableCell className={cn(BODY_CELL, 'text-center')}>{formatDateTime(booking.reserved_at)}</TableCell>
-                          <TableCell className={cn(BODY_CELL, 'text-center')}>
-                            <Badge variant="outline" className={cn('text-[10px]', getStatusClassName(booking.status))}>
-                              {STATUS_LABELS[booking.status]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className={BODY_CELL_LAST}>
-                            {editable ? (
-                              <Select
-                                value={booking.status}
-                                disabled={updatingId === booking.id}
-                                onValueChange={(value) => handleStatusChange(booking, value as AttendanceStatus)}
-                              >
-                                <SelectTrigger className="h-8 text-xs bg-card border-[#343637] dark:border-[#6b7280]">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {ATTENDANCE_OPTIONS.map((option) => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                변경 불가
-                              </span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+              <>
+                <div className="max-h-[300px] overflow-auto scrollbar-hide bg-[#f9fafb] dark:bg-[#1d1d1d] border border-[#343637] dark:border-[#6b7280]">
+                  <Table className="w-full table-fixed border-separate border-spacing-0">
+                    <TableHeader className="sticky top-0 z-10 shadow-sm">
+                      <TableRow className="hover:bg-transparent border-b-0">
+                        <TableHead className={cn(HEADER_CELL, 'w-[120px]')}>이름</TableHead>
+                        <TableHead className={cn(HEADER_CELL, 'w-[120px]')}>아이디</TableHead>
+                        <TableHead className={cn(HEADER_CELL, 'w-[200px]')}>이메일</TableHead>
+                        <TableHead className={cn(HEADER_CELL, 'w-[140px]')}>예약일시</TableHead>
+                        <TableHead className={cn(HEADER_CELL, 'w-[100px]')}>현재 상태</TableHead>
+                        <TableHead className={cn(HEADER_CELL_LAST, 'w-[150px]')}>출석 처리</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bookings.map((booking) => {
+                        const editable = isAttendanceStatus(booking.status)
+                        return (
+                          <TableRow
+                            key={booking.id}
+                            className="h-[35px] border-b-0 group transition-colors bg-[#f9fafb] dark:bg-[#1d1d1d] hover:text-blue-600 dark:hover:text-yellow-400 hover:bg-muted/30"
+                          >
+                            <TableCell className={cn(BODY_CELL, 'truncate')}>{booking.name}</TableCell>
+                            <TableCell className={cn(BODY_CELL, 'truncate')}>{booking.userid}</TableCell>
+                            <TableCell className={cn(BODY_CELL, 'truncate')}>{booking.email}</TableCell>
+                            <TableCell className={cn(BODY_CELL, 'text-center')}>{formatDateTime(booking.reserved_at)}</TableCell>
+                            <TableCell className={cn(BODY_CELL, 'text-center')}>
+                              <Badge variant="outline" className={cn('text-[10px]', getStatusClassName(booking.status))}>
+                                {STATUS_LABELS[booking.status]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={BODY_CELL_LAST}>
+                              {editable ? (
+                                <Select
+                                  value={booking.status}
+                                  disabled={updatingId === booking.id}
+                                  onValueChange={(value) => handleStatusChange(booking, value as AttendanceStatus)}
+                                >
+                                  <SelectTrigger className="h-8 text-xs bg-card border-[#343637] dark:border-[#6b7280]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {ATTENDANCE_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  변경 불가
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <HeartRateParticipantPanel bookings={bookings.filter((booking) => booking.status !== 'cancelled')} />
+              </>
             )}
           </div>
         ) : null}

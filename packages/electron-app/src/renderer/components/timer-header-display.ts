@@ -3,6 +3,7 @@
  */
 
 import { getTimerStripPlanDenominator } from '../circuits/emom/intro-panel-emom.js'
+import { resolveWorkoutMethodType } from './workout-timer-circuit.js'
 
 export interface TimerHeaderStripInput {
   currentRound: number
@@ -70,6 +71,7 @@ export const applyTimerHeaderStrip = (
   const hasStressData = data.lapIndex != null && data.totalLaps != null
   const isMainStress = hasStressData && !isLoop && !isEmom
   const isAmrap = circuitType === 'amrap'
+  const isEmomStress = isEmom && resolveWorkoutMethodType(data) === 'stress'
 
   const durationSeconds = Number(data.duration ?? data.sequence?.duration ?? 0) || 0
 
@@ -143,7 +145,7 @@ export const applyTimerHeaderStrip = (
         const cr = Math.min(tr, Math.max(1, Math.round(Number(data.currentSet))))
         renderSetLapBlock(setDisplayEl, 'RND', cr, tr, GOLD)
       } else if (isEmom) {
-        /** RND 분모 = workoutPlans.length 만. 분자 = 6슬롯 블록 단위(메인 currentSet 우선). */
+        /** EMOM 분모 = workoutPlans.length 만. Stress 방식은 SET, Loop 방식은 RND로 표시. */
         const tr = getTimerStripPlanDenominator(data.metadata)
         let cr = 1
         const curSet = data.currentSet
@@ -155,7 +157,7 @@ export const applyTimerHeaderStrip = (
             cr = Math.min(tr, Math.floor((slotOrd - 1) / 6) + 1)
           }
         }
-        renderSetLapBlock(setDisplayEl, 'RND', cr, tr, GOLD)
+        renderSetLapBlock(setDisplayEl, isEmomStress ? 'SET' : 'RND', cr, tr, GOLD)
       } else if (isMainStress) {
         const setIdx = data.setIndex ?? currentRound
         const setTot = getTimerStripPlanDenominator(data.metadata)

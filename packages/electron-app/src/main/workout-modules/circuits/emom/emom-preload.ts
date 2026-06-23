@@ -31,10 +31,10 @@ export const preloadEmomFromTimeline = (
   }
 }
 
-/** EMOM 전반(A*) 기준으로 그다음 후반(B*) 포지션 블록 수집. */
+/** EMOM 전반(A/B) 기준으로 그다음 후반(C/D) 포지션 블록 수집. */
 const collectNextGroupSequences = (
   ctx: WorkoutModuleContext,
-  /** 0 → B1–B6 프리로드 */
+  /** 0 → C1–C3/D1–D3 프리로드 */
   physicalThreeSlotGroupIndex: number,
 ): any[] => {
   return Array.from(
@@ -42,10 +42,10 @@ const collectNextGroupSequences = (
   )
 }
 
-/** A* 구간일 때 B* 6포지션 선프리로드 — 인자는 항상 0 (첫 블록의 다음) */
+/** 전반(A/B) 구간일 때 후반(C/D) 6포지션 선프리로드 — 인자는 항상 0 (첫 블록의 다음) */
 export const preloadNextEmomGroup = (
   ctx: WorkoutModuleContext,
-  /** 반드시 0 — 전반 전용(다음 블록=B*). 후반에서는 호출하지 않음 */
+  /** 반드시 0 — 전반 전용(다음 블록=C/D). 후반에서는 호출하지 않음 */
   physicalThreeSlotGroupIndex: number,
   currentRound: number,
 ): void => {
